@@ -1,2 +1,3 @@
 # pub-notes
-Public notes
+Contains public notes and tutorials for DEV purposes only.
+
