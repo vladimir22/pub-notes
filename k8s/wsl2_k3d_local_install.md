@@ -1,6 +1,5 @@
 # Tips How to set up Kubernetes ENV for Local Developement
-Current tips might be helpful in setting up local Kubernetes ENV for developing and debugging kubernetes based microservices using `Windows10 WSL2` and `k3d` tool
-
+Current tips helps to set up Local Kubernetes Cluster using `Windows10 WSL2` and `k3d` tool
 
 
 ## Install WSL2
@@ -23,7 +22,7 @@ wsl --set-default Ubuntu
 ## Configure DockerDesktop: Settings > Resources > WSL Integration - Ubuntu ON
 ```
 
-#### - Check that your Distro is OK, see troubleshooting [here](https://github.com/docker/for-win/issues/6971#issuecomment-636358053) 
+#### - Check that your Distro is OK, troubleshooting [here](https://github.com/docker/for-win/issues/6971#issuecomment-636358053) 
 `wsl -l -v`
 ```sh
   NAME                   STATE           VERSION
@@ -34,7 +33,6 @@ wsl --set-default Ubuntu
 
 
 ## Configure Your Distro
-
 Open your `Distro` shell and install nessecary tools
 
 #### - Install [kubectl](https://kubernetes.io/ru/docs/tasks/tools/install-kubectl/)
@@ -76,10 +74,12 @@ kube-system   metrics-server-ff9dbcb6c-dm6hb            1/1     Running     0   
 kube-system   traefik-55fdc6d984-59mq7                  1/1     Running     0          4h40m
 ```
 
-## **Congrats!!! You have already configured Local K3S Cluster :)**
-
-
-
+##  *Congrats!!! You have already configured Local K3S Cluster :+1:*
+\
+\
+\
+\
+\
 ## Addons
 The next steps are optional, use these steps to if it need to: 
 
@@ -98,16 +98,6 @@ helm repo add jetstack https://charts.jetstack.io
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.7.1/cert-manager.crds.yaml
 helm install cert-manager jetstack/cert-manager -n cert-manager
 ```
-
-
-### - Install [db-operator](https://kloeckner-i.github.io/db-operator), TODO: wait for `v.1.5.0` helm version [here](https://kloeckner-i.github.io/db-operator/index.yaml) which contains my [PR-130](https://github.com/kloeckner-i/db-operator/pull/130): 
-```sh
-git clone https://github.com/zalando/postgres-operator.git
-cd /mnt/d/Project/github/kloeckner-i/db-operator/charts/db-operator 
-kubectl create ns db-oper
-helm install db-oper . -n db-oper
-```
-
 
 
 ### - Install Echoserver
@@ -350,3 +340,14 @@ EOF
 
 #### - Access echoserver outside the cluster
 `curl http://localhost:8081/echo-$WORKLOAD_SUFFIX`
+
+
+
+### - Install [db-operator](https://kloeckner-i.github.io/db-operator)
+TODO: wait for `v.1.5.0` helm version [here](https://kloeckner-i.github.io/db-operator/index.yaml) which contains my [PR-130](https://github.com/kloeckner-i/db-operator/pull/130): 
+```sh
+git clone https://github.com/zalando/postgres-operator.git
+cd /mnt/d/Project/github/kloeckner-i/db-operator/charts/db-operator 
+kubectl create ns db-oper
+helm install db-oper . -n db-oper
+```
