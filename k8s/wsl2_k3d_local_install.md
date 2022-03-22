@@ -83,13 +83,8 @@ kube-system   traefik-55fdc6d984-59mq7                  1/1     Running     0   
 ## Addons
 The next steps are optional, use these steps to if it need to: 
 
-### - Install postgres-operator
-```sh
-git clone https://github.com/zalando/postgres-operator.git
-cd /mnt/d/Project/github/zalando/postgres-operator/charts/postgres-operator
-kubectl create ns pgo
-helm install pgo . -n pgo
-```
+
+
 
 ### - Install cert-manager
 ```sh
@@ -341,9 +336,71 @@ EOF
 #### - Access echoserver outside the cluster
 `curl http://localhost:8081/echo-$WORKLOAD_SUFFIX`
 
+#### - Delete Demo Resources
+```sh
+kubectl delete ingress -n $ECHOSERVER_NS --all
+kubectl delete deployment -n $ECHOSERVER_NS echoserver
+kubectl delete daemonset -n $ECHOSERVER_NS echoserver
+kubectl delete statefulset -n $ECHOSERVER_NS echoserver
+kubectl delete service -n $ECHOSERVER_NS --all
+kubectl delete cm -n $ECHOSERVER_NS echoserver
+kubectl delete secrets -n $ECHOSERVER_NS demo-secret1 demo-secret2
+```
 
+### - Install Postgres
 
-### - Install [db-operator](https://kloeckner-i.github.io/db-operator)
+#### - Install [postgres-operator](https://github.com/zalando/postgres-operator)
+```sh
+git clone https://github.com/zalando/postgres-operator.git
+cd /mnt/d/Project/github/zalando/postgres-operator/charts/postgres-operator
+kubectl create ns pgo
+helm install pgo . -n pgo
+```
+
+#### - Install [minimal-postgres](https://github.com/zalando/postgres-operator/blob/master/manifests/minimal-postgres-manifest.yaml) DB
+```yaml
+kubectl apply -n pf -f - <<EOF
+apiVersion: "acid.zalan.do/v1"
+kind: postgresql
+metadata:
+  name: postgres-db-pg-cluster
+spec:
+  teamId: "postgres-db"
+  volume:
+    size: 128Mi
+  numberOfInstances: 2
+  users:
+    zalando:  # database owner
+    - superuser
+    - createdb
+    foo_user: []  # role for application foo
+  databases:
+    foo: zalando  # dbname: owner
+  preparedDatabases:
+    bar: {}
+  postgresql:
+    version: "14"
+EOF
+```
+
+#### - Test DB access
+```sh
+DB_HOST=postgres-db-pg-cluster.pf.svc.cluster.local
+DB_NAME=postgres
+DB_USERNAME=postgres
+## Get password from the generated secret
+DB_PASSWORD=$(kubectl get secret -n pf "postgres.postgres-db-pg-cluster.credentials.postgresql.acid.zalan.do" -o jsonpath='{.data.password}' | base64 --decode)
+## Connect to the DB
+kubectl run pg-client --rm --tty -i --restart='Never' --namespace default --image bitnami/postgresql \
+--env="PGPASSWORD=$DB_PASSWORD" --command -- \
+psql --set=sslmode=require --host $DB_HOST -U $DB_USERNAME -d $DB_NAME
+\conninfo
+\q
+## Delete client POD
+kubectl delete pod pg-client
+```
+
+#### - Install [db-operator](https://kloeckner-i.github.io/db-operator)
 TODO: wait for `v.1.5.0` helm version [here](https://kloeckner-i.github.io/db-operator/index.yaml) which contains my [PR-130](https://github.com/kloeckner-i/db-operator/pull/130): 
 ```sh
 git clone https://github.com/zalando/postgres-operator.git
