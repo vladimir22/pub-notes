@@ -59,7 +59,6 @@ sudo mv linux-amd64/helm /usr/local/bin/helm
 ```sh
 k3d cluster list
 k3d cluster create test -p "8081:80@loadbalancer"
-
 ```
 
 #### - View Cluster PODs
@@ -81,9 +80,7 @@ kube-system   traefik-55fdc6d984-59mq7                  1/1     Running     0   
 \
 \
 ## Addons
-The next steps are optional, use these steps to if it need to: 
-
-
+The next steps are optional, use these steps if you want to: 
 
 
 ### - Install cert-manager
