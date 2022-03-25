@@ -405,3 +405,12 @@ cd /mnt/d/Project/github/kloeckner-i/db-operator/charts/db-operator
 kubectl create ns db-oper
 helm install db-oper . -n db-oper
 ```
+
+#### - Install [reloader](https://github.com/stakater/Reloader/blob/master/deployments/kubernetes/chart/reloader/values.yaml)
+```sh
+helm repo add stakater https://stakater.github.io/stakater-charts
+helm repo update
+kubectl create ns reloader
+helm install reloader stakater/reloader  -n reloader --set reloader.ignoreConfigMaps=true
+```
+
