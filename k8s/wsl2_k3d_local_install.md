@@ -414,3 +414,156 @@ kubectl create ns reloader
 helm install reloader stakater/reloader  -n reloader --set reloader.ignoreConfigMaps=true
 ```
 
+
+#### - Install Minio
+```sh
+helm repo add minio https://helm.min.io/
+
+cat <<EOF >>values-s3.yaml
+image:
+  repository: docker.io/minio/minio
+mcImage:
+  repository: docker.io/minio/mc
+helmKubectlJqImage:
+  repository: docker.io/bskim45/helm-kubectl-jq
+mode: standalone
+resources:
+  requests:
+    memory: 256Mi
+replicas: 1
+service:
+  type: NodePort
+  nodePort: 31900
+persistence:
+  storageClass: local-path
+  size: 500Mi
+securityContext:
+  enabled: true
+makeBucketJob:
+  securityContext:
+    enabled: true
+updatePrometheusJob:
+  securityContext:
+    enabled: true
+configPathmc: "/tmp"    # avoids /etc permission denied for non-root
+EOF
+
+kubectl create ns s3
+
+helm install storage minio/minio --version 8.0.10 --namespace s3 --values values-s3.yaml --set accessKey=minio --set secretKey=minio123 --set buckets[0].name=foundation-pf --set buckets[0].policy=none --set buckets[0].purge=true
+
+
+kubectl apply --namespace s3 -f - <<EOF
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    ingress.kubernetes.io/ssl-redirect: "false"
+  name: minio
+spec:
+  rules:
+  - host: localhost
+    http:
+      paths:
+      - backend:
+          service:
+            name: storage-minio
+            port:
+              number: 9000
+        path: /
+        pathType: Prefix
+  tls:
+  - hosts:
+    - localhost
+EOF
+
+## Access Minio UI
+http://localhost:8081/
+```
+
+
+#### - Install Velero
+```yaml
+
+## Prepare values: https://github.com/vmware-tanzu/helm-charts/blob/main/charts/velero/values.yaml
+cat <<EOF >>velero.yaml
+image:
+  tag: v1.8.1
+configuration:
+  provider: aws # Cloud provider being used (e.g. aws, azure, gcp).
+  backupStorageLocation:
+    name: aws
+    default: true
+    provider: velero.io/aws
+    bucket: foundation-pf
+    config:
+      region: minio
+      s3ForcePathStyle: true
+      publicUrl: http://localhost:8081/
+      s3Url: http://storage-minio.s3.svc.cluster.local:9000
+credentials:
+  useSecret: true
+  secretContents:
+    cloud: |
+      [default]
+      aws_access_key_id = minio
+      aws_secret_access_key = minio123      
+snapshotsEnabled: false
+configMaps:
+  restic-restore-action-config:
+    labels:
+      velero.io/plugin-config: ""
+      velero.io/restic: RestoreItemAction
+    data:
+      image: gcr.io/heptio-images/velero-restic-restore-helper:v1.1.0
+deployRestic: true ## use restic backup tool : https://restic.readthedocs.io/en/latest/manual_rest.html
+
+initContainers:
+  - name: velero-plugin-for-aws
+    image: velero/velero-plugin-for-aws:v1.2.0
+    imagePullPolicy: IfNotPresent
+    volumeMounts:
+      - mountPath: /target
+        name: plugins 
+EOF
+
+
+kubectl create ns velero
+
+helm repo add vmware-tanzu https://vmware-tanzu.github.io/helm-charts
+helm install velero vmware-tanzu/velero --namespace velero --version 2.29.4 -f velero.yaml
+
+## Install velero tool
+wget https://github.com/vmware-tanzu/velero/releases/download/v1.8.1/velero-v1.8.1-linux-amd64.tar.gz
+tar -zxvf velero-v1.8.1-linux-amd64.tar.gz
+sudo mv velero-v1.8.1-linux-amd64/velero /usr/local/bin/.
+
+```
+
+
+##### - Debug Velero backups
+```yaml
+
+## Install dummy-service helm chart: https://vladimir22.github.io/dummy-service/index.yaml
+helm repo add vladimir22 https://vladimir22.github.io/dummy-service
+HELM_VERSION=1.0.2
+helm repo update vladimir22
+helm install ds -n default vladimir22/dummy-service --version $HELM_VERSION --set db.host=$DB_HOST --set db.adminUsername=$DB_USERNAME --set db.adminPassword=$DB_PASSWORD
+## Check DB status: curl http://localhost:8081/dummy-service/db
+
+## Backup default namespace
+BACKUP_NAME=ns-default
+velero backup create $BACKUP_NAME --include-namespaces default
+
+velero backup describe $BACKUP_NAME --details
+## Check backups using UI Minio: http://localhost:8081/
+
+## Delete dummy-service helm chart
+helm delete ds -n default
+
+## Restore default namespace
+velero restore create --from-backup $BACKUP_NAME --include-namespaces default
+
+
+## Check DB status again: curl http://localhost:8081/dummy-service/db
+```
