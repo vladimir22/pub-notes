@@ -556,6 +556,7 @@ BACKUP_NAME=ns-default
 velero backup create $BACKUP_NAME --include-namespaces default
 
 velero backup describe $BACKUP_NAME --details
+velero backup logs $BACKUP_NAME
 ## Check backups using UI Minio: http://localhost:8081/
 
 ## Delete dummy-service helm chart
@@ -563,7 +564,6 @@ helm delete ds -n default
 
 ## Restore default namespace
 velero restore create --from-backup $BACKUP_NAME --include-namespaces default
-
 
 ## Check DB status again: curl http://localhost:8081/dummy-service/db
 ```
