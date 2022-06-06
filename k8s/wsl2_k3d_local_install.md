@@ -354,50 +354,358 @@ kubectl create ns pgo
 helm install pgo . -n pgo
 ```
 
-#### - Install [minimal-postgres](https://github.com/zalando/postgres-operator/blob/master/manifests/minimal-postgres-manifest.yaml) DB
+
+#### - Create ConfigMap with [Custom ENVs for all Cluster PODs](https://github.com/zalando/postgres-operator/blob/master/docs/administrator.md#custom-pod-environment-variables) by default
 ```yaml
-kubectl apply -n pf -f - <<EOF
+
+## Create Default ENVs ConfigMap for PG Statefulset
+kubectl apply -n $CLUSTER_NS -f - <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-pod-config
+data:
+  ## --- Backup Settings ---
+  AWS_ENDPOINT: http://storage-minio.s3.svc.cluster.local:9000 #
+  AWS_ACCESS_KEY_ID: minio
+  AWS_SECRET_ACCESS_KEY: minio123
+  AWS_REGION: minio
+  AWS_S3_FORCE_PATH_STYLE: "true" # needed for MinIO ONLY
+
+  WAL_S3_BUCKET: foundation-pf
+  WALE_S3_BUCKET: foundation-pf
+  WAL_BUCKET_SCOPE_PREFIX: ""
+  WAL_BUCKET_SCOPE_SUFFIX: ""
+
+  WALG_DISABLE_S3_SSE: "true"
+
+  USE_WALG_BACKUP: "true"
+  USE_WALG_RESTORE: "true"
+
+  BACKUP_SCHEDULE: '*/3  * * * *' ## Every 3 minutes
+  BACKUP_NUM_TO_RETAIN: "5"
+
+
+  ## --- Clone Settings ---
+  ## Clone creds can be specified in the "postgresql" object
+  #CLONE_AWS_ENDPOINT: http://storage-minio.s3.svc.cluster.local:9000  
+  #CLONE_AWS_ACCESS_KEY_ID: minio
+  #CLONE_AWS_SECRET_ACCESS_KEY: minio123
+  
+  CLONE_AWS_REGION: minio
+  CLONE_WAL_S3_BUCKET: "foundation-pf"
+  CLONE_WAL_BUCKET_SCOPE_SUFFIX: ""
+  CLONE_WAL_BUCKET_SCOPE_PREFIX: ""
+  CLONE_AWS_S3_FORCE_PATH_STYLE: "true" # needed for MinIO
+  CLONE_METHOD: CLONE_WITH_WALE
+  #CLONE_WITH_WALE: "true"  ## Enable cloning for every new cluster by default !!!
+  
+  ## Other optional clone params
+  #CLONE_WALE_ENV_DIR: "/tmp/wal-g"
+  #CLONE_USE_WALG_RESTORE: "true"
+  #CLONE_SCOPE: postgres-db-pg-cluster  
+  ##CLONE_WAL_BUCKET_SCOPE_SUFFIX: "/889918f8-0c89-455d-b0bb-8cf0b799c011"
+  ##CLONE_TARGET_TIME: "2025-12-19T12:40:33+00:00"
+EOF
+```
+
+#### - Link created ConfigMap to Zalando Operator
+```yaml
+## Link ConfigMap inside the OperatorConfiguration
+kubectl edit OperatorConfiguration -n pgo pgo-postgres-operator
+...
+configuration:
+  kubernetes:
+    pod_environment_configmap: pf/postgres-pod-config
+...
+
+## Restart Zalando Operator
+kubectl delete pods -n pgo --all
+```
+
+#### - View Zalando Operator logs
+```bash
+POD_NS=pgo
+POD_LABEL=app.kubernetes.io/name=postgres-operator
+POD_NAME=$(kubectl get pods -n $POD_NS -l "$POD_LABEL" -o jsonpath="{.items[0].metadata.name}")
+klo -n $POD_NS $POD_NAME
+```
+
+
+#### - Create 'original' (empty) postgresql cluster
+```yaml
+CLUSTER_NS=pf
+CLUSTER_NAME=postgres-db-original 
+
+kubectl apply -n $CLUSTER_NS -f - <<EOF
 apiVersion: "acid.zalan.do/v1"
 kind: postgresql
 metadata:
-  name: postgres-db-pg-cluster
+  name: $CLUSTER_NAME ## Cluster name prefix must match with "teamId" value !!!
 spec:
   teamId: "postgres-db"
   volume:
     size: 128Mi
   numberOfInstances: 2
   users:
-    zalando:  # database owner
+    ## Create users, set up roles
+    conjuruser:  # database owner
     - superuser
     - createdb
-    foo_user: []  # role for application foo
+    conjurdb_user: []  # ordinary role for application
+
+  ## Create db & assign owner
   databases:
-    foo: zalando  # dbname: owner
-  preparedDatabases:
-    bar: {}
+    conjurdb: conjuruser  # dbname: owner
+
   postgresql:
     version: "14"
 EOF
+
+## Check Statefulset ENVs
+kubectl get statefulset -n $CLUSTER_NS $CLUSTER_NAME -o yaml | grep env -A100
+kubectl exec -it -n $CLUSTER_NS $CLUSTER_NAME-0 -- env
+
+## View Cluster POD logs
+kubectl logs -f -n $CLUSTER_NS $CLUSTER_NAME-0 
 ```
 
-#### - Test DB access
-```sh
-DB_HOST=postgres-db-pg-cluster.pf.svc.cluster.local
-DB_NAME=postgres
-DB_USERNAME=postgres
-## Get password from the generated secret
-DB_PASSWORD=$(kubectl get secret -n pf "postgres.postgres-db-pg-cluster.credentials.postgresql.acid.zalan.do" -o jsonpath='{.data.password}' | base64 --decode)
-## Connect to the DB
+
+#### - Connect to the 'original' DB and write test data
+```bash
+## Connect to created database
+PG_HOST=$CLUSTER_NAME.$CLUSTER_NS.svc.cluster.local
+DB_NAME=conjurdb
+## Connect as DB owner
+DB_USERNAME=conjuruser
+DB_SECRET=conjuruser
+## Connect as APP user
+#DB_USERNAME=conjurdb_user
+#DB_SECRET=conjurdb-user
+## Connect as postgres user
+#PG_USERNAME=postgres
+#DB_SECRET=postgres
+DB_PASSWORD=$(kubectl get secret -n $CLUSTER_NS "$DB_SECRET.$CLUSTER_NAME.credentials.postgresql.acid.zalan.do" -o jsonpath='{.data.password}' | base64 --decode)
+echo "DB_PASSWORD = $DB_PASSWORD"
+kubectl delete pod pg-client
 kubectl run pg-client --rm --tty -i --restart='Never' --namespace default --image bitnami/postgresql \
 --env="PGPASSWORD=$DB_PASSWORD" --command -- \
-psql --set=sslmode=require --host $DB_HOST -U $DB_USERNAME -d $DB_NAME
-\conninfo
+psql --set=sslmode=require --host $PG_HOST -U $DB_USERNAME -d $DB_NAME
+
+-- create table
+CREATE TABLE test (
+    test_id bigserial primary key,
+    test_name varchar(20) NOT NULL,
+    test_desc text NOT NULL,
+    date_added timestamp default NOW()
+);
+-- insert data
+INSERT INTO test(test_name, test_desc) VALUES ('test_name_value', 'test_desc_value');
+
+-- list all tables
+SELECT * FROM information_schema.tables WHERE table_catalog = 'conjurdb' and table_schema = 'public';
+
+-- list data in the table
+SELECT * from public.test;
+
 \q
-## Delete client POD
-kubectl delete pod pg-client
 ```
 
-#### - Install [db-operator](https://kloeckner-i.github.io/db-operator)
+
+#### - View created backups
+```bash
+## View backups in the POD
+kubectl exec -it -n $CLUSTER_NS $CLUSTER_NAME-0 -- envdir "/run/etc/wal-e.d/env" wal-g backup-list
+
+## View Minio UI with created backups
+http://localhost:8081/minio/foundation-pf/spilo/
+```
+
+
+#### - Create postgresql '[clone](https://github.com/zalando/postgres-operator/blob/master/docs/user.md#clone-from-s3)'
+```bash
+## Create postgresql clone
+CLUSTER_CLONE_NS=pf
+CLUSTER_CLONE_NAME=postgres-db-clone
+
+kubectl create ns $CLUSTER_CLONE_NS
+
+kubectl apply -n $CLUSTER_CLONE_NS -f - <<EOF
+apiVersion: "acid.zalan.do/v1"
+kind: postgresql
+metadata:
+  name: $CLUSTER_CLONE_NAME
+spec:
+
+  teamId: "postgres-db"
+  volume:
+    size: 128Mi
+  numberOfInstances: 1
+  users:
+    ## Create users, set up permissions 
+    conjuruser:  # database owner
+    - superuser
+    - createdb
+    conjurdb_user: []  # role for application
+
+  ## Create db & assign owner
+  databases:
+    conjurdb: conjuruser  # dbname: owner
+
+  ## Create db with default users: https://github.com/zalando/postgres-operator/blob/master/docs/user.md#default-nologin-roles
+  #preparedDatabases:
+  #  foo: {}
+
+  postgresql:
+    version: "14"
+
+  clone:
+    #uid: "889918f8-0c89-455d-b0bb-8cf0b799c011"
+    cluster: $CLUSTER_NAME
+    timestamp: "2022-06-06T16:50:00+00:00"
+    s3_endpoint: http://storage-minio.s3.svc.cluster.local:9000
+    s3_access_key_id: minio
+    s3_secret_access_key: minio123
+    s3_wal_path: "s3://foundation-pf/spilo/$CLUSTER_NAME/wal"
+EOF
+
+## Check Statefulset ENVs
+kubectl get statefulset -n $CLUSTER_CLONE_NS $CLUSTER_CLONE_NAME -o yaml | grep env -A100
+
+## View PG Cluster logs
+kubectl logs -f -n $CLUSTER_CLONE_NS $CLUSTER_CLONE_NAME-0
+  ... INFO: no action. I am (postgres-db-clone-0) the leader with the lock
+  
+## View already created backups 
+kubectl exec -it -n $CLUSTER_CLONE_NS $CLUSTER_CLONE_NAME-0 -- envdir "/run/etc/wal-e.d/env" wal-g backup-list
+```
+
+
+#### - Connect to the 'clonned' DB and check that test data are present
+```bash
+## Connect to the DB conjur
+PG_HOST=$CLUSTER_CLONE_NAME.$CLUSTER_CLONE_NS.svc.cluster.local
+DB_NAME=conjurdb
+## Connect as DB owner
+DB_USERNAME=conjuruser
+DB_SECRET=conjuruser
+## Connect as APP user
+#DB_USERNAME=conjurdb_user
+#DB_SECRET=conjurdb-user
+DB_PASSWORD=$(kubectl get secret -n $CLUSTER_CLONE_NS "$DB_SECRET.$CLUSTER_CLONE_NAME.credentials.postgresql.acid.zalan.do" -o jsonpath='{.data.password}' | base64 --decode)
+echo -e "\nPG_HOST='$PG_HOST' \\n\
+DB_NAME='$DB_NAME' \n\
+DB_USERNAME='$DB_USERNAME' \n\
+DB_PASSWORD='$DB_PASSWORD' \n"
+kubectl delete pod pg-client
+kubectl run pg-client --rm --tty -i --restart='Never' --namespace default --image bitnami/postgresql \
+--env="PGPASSWORD=$DB_PASSWORD" --command -- \
+psql --set=sslmode=require --host $PG_HOST -U $DB_USERNAME -d $DB_NAME
+
+-- list all tables
+SELECT * FROM information_schema.tables WHERE table_catalog = 'conjurdb' and table_schema = 'public';
+
+-- list data in the table
+SELECT * from public.test;
+```
+
+
+#### - Optional: Cleanup postgresql resources manually if Zalando Operator stuck
+```bash
+## Optional: Cleanup postgresql resources manually if Zalando was stuck
+PG_NS=$CLUSTER_CLONE_NS
+PG_NAME=$CLUSTER_CLONE_NAME
+kubectl delete postgresql -n $PG_NS $PG_NAME
+
+kubectl delete statefulset -n $PG_NS $PG_NAME
+kubectl delete service -n $PG_NS $PG_NAME
+kubectl delete service -n $PG_NS $PG_NAME-repl
+kubectl delete service -n $PG_NS $PG_NAME-config
+kubectl delete pdb -n $PG_NS postgres-$PG_NAME-pdb
+kubectl delete secret -n $PG_NS conjurdb-user.$PG_NAME.credentials.postgresql.acid.zalan.do
+kubectl delete secret -n $PG_NS conjuruser.$PG_NAME.credentials.postgresql.acid.zalan.do
+kubectl delete secret -n $PG_NS postgres.$PG_NAME.credentials.postgresql.acid.zalan.do
+kubectl delete secret -n $PG_NS standby.$PG_NAME.credentials.postgresql.acid.zalan.do
+kubectl delete pvc -n $PG_NS pgdata-$PG_NAME-0
+```
+
+
+
+### - Install [conjur-oss](https://kloeckner-i.github.io/db-operator)
+```sh
+
+CONJUR_NS=conjur
+kubectl create namespace "$CONJUR_NS"
+
+# Add conjur repo: https://cyberark.github.io/helm-charts/index.yaml
+helm repo add cyberark https://cyberark.github.io/helm-charts
+helm search repo cyberark
+
+## Generate init key
+DATA_KEY="$(docker run --rm cyberark/conjur data-key generate)"
+echo "DATA_KEY = $DATA_KEY"
+
+## Get DB creds
+PG_HOST=postgres-db-pg-cluster.pf.svc.cluster.local
+DB_NAME=conjurdb
+## Connect as DB owner
+DB_USERNAME=conjuruser
+DB_SECRET=conjuruser
+## Connect as APP user
+#DB_USERNAME=conjurdb_user
+#DB_SECRET=conjurdb-user
+DB_PASSWORD=$(kubectl get secret -n pf "$DB_SECRET.postgres-db-pg-cluster.credentials.postgresql.acid.zalan.do" -o jsonpath='{.data.password}' | base64 --decode)
+echo "DB_PASSWORD = $DB_PASSWORD"
+
+## Create custom values
+cat << EOF  > conjur-oss_custom-values.yml  
+logLevel: "debug" ## Authentication Errors are shown ONLY IN DEBUG MODE !!!
+dataKey: "$DATA_KEY"  ## generate value: docker run --rm cyberark/conjur data-key generate
+authenticators: "authn,authn-k8s/testAuthID"
+account:
+  ## maps to CONJUR_ACCOUNT env variable
+  name: setupUser
+  create: false ## "true" value does not work properly: POD fails in case of restarting  !!!
+ssl:
+  hostname: "conjur-oss"
+service:
+  external:
+    enabled: false
+internal:
+  type: ClusterIP
+
+## Use already existing DB
+database:
+  url: "postgres://$DB_USERNAME:$DB_PASSWORD@$PG_HOST:5432/$DB_NAME"
+
+## Install PG Cluster
+#postgres:
+#  persistentVolume:
+#    create: true
+#    size: 2Gi
+#    storageClass: local-path
+EOF
+cat ./conjur-oss_custom-values.yml
+
+## Install conjur-oss
+helm install oss -n $CONJUR_NS cyberark/conjur-oss --version=2.0.4 -f ./conjur-oss_custom-values.yml
+
+kubectl get pod -n conjur
+
+POD_NS=conjur
+POD_LABEL=app=conjur-oss
+POD_NAME=$(kubectl get pods -n $POD_NS -l "$POD_LABEL" -o jsonpath="{.items[0].metadata.name}")
+
+
+## Create account
+kubectl exec --namespace conjur $POD_NAME --container=conjur-oss conjurctl account create "setupUser" | tail -1
+
+Created new account 'setupUser'
+API key for admin: 30pgvre3172ks7zqj13q11zm2rn16m5zq423rkb7j1r67nqn6azrsz
+```
+
+
+### - Install [db-operator](https://kloeckner-i.github.io/db-operator)
 TODO: wait for `v.1.5.0` helm version [here](https://kloeckner-i.github.io/db-operator/index.yaml) which contains my [PR-130](https://github.com/kloeckner-i/db-operator/pull/130): 
 ```sh
 git clone https://github.com/zalando/postgres-operator.git
@@ -406,7 +714,8 @@ kubectl create ns db-oper
 helm install db-oper . -n db-oper
 ```
 
-#### - Install [reloader](https://github.com/stakater/Reloader/blob/master/deployments/kubernetes/chart/reloader/values.yaml)
+
+### - Install [reloader](https://github.com/stakater/Reloader/blob/master/deployments/kubernetes/chart/reloader/values.yaml)
 ```sh
 helm repo add stakater https://stakater.github.io/stakater-charts
 helm repo update
@@ -415,7 +724,7 @@ helm install reloader stakater/reloader  -n reloader --set reloader.ignoreConfig
 ```
 
 
-#### - Install Minio
+### - Install Minio
 ```sh
 helm repo add minio https://helm.min.io/
 
@@ -482,10 +791,9 @@ http://localhost:8081/
 ```
 
 
-#### - Install Velero
+### - Install Velero
+##### - Prepare [velero.yaml](https://github.com/vmware-tanzu/helm-charts/blob/main/charts/velero/values.yaml) and install `velero` helm chart
 ```yaml
-
-## Prepare values: https://github.com/vmware-tanzu/helm-charts/blob/main/charts/velero/values.yaml
 cat <<EOF >>velero.yaml
 image:
   tag: v1.8.1
