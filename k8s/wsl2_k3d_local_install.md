@@ -344,9 +344,24 @@ kubectl delete cm -n $ECHOSERVER_NS echoserver
 kubectl delete secrets -n $ECHOSERVER_NS demo-secret1 demo-secret2
 ```
 
-### - Install Postgres
+### - Install Postgres Operator
+Theory:
+- [Spilo](https://github.com/zalando/spilo) is a Docker image that provides PostgreSQL and Patroni bundled together. 
+Notes:
++ Test
+- [Patroni](https://github.com/zalando/patroni#how-patroni-works) is a template for PostgreSQL HA based on python scripts
+Notes:
++ Test
+- [Zalando](https://github.com/zalando/postgres-operator) is a postgres-operator that manages Patroni HA Replica PODs depend on created [postgresql](https://github.com/zalando/postgres-operator/blob/master/docs/reference/cluster_manifest.md) object (mainfest):
+Notes: 
++ Zalando is not well documented and developed rapidly, reading sources is a must!
 
-#### - Install [postgres-operator](https://github.com/zalando/postgres-operator)
+
+
+
+
+
+#### - Install [Zalando](https://github.com/zalando/postgres-operator) postgres-operator
 ```sh
 git clone https://github.com/zalando/postgres-operator.git
 cd /mnt/d/Project/github/zalando/postgres-operator/charts/postgres-operator
@@ -432,7 +447,7 @@ klo -n $POD_NS $POD_NAME
 ```
 
 
-#### - Create 'original' (empty) postgresql cluster
+#### - Create 'original' empty `postgresql` cluster
 ```yaml
 CLUSTER_NS=pf
 CLUSTER_NAME=postgres-db-original 
