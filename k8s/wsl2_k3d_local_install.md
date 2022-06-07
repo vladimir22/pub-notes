@@ -346,22 +346,19 @@ kubectl delete secrets -n $ECHOSERVER_NS demo-secret1 demo-secret2
 
 ### - Install Postgres Operator
 *Theory*:
-- [Spilo](https://github.com/zalando/spilo) is a Docker image that provides PostgreSQL and Patroni bundled together.
-  + Notes:
-    - Test
+- [Spilo](https://github.com/zalando/spilo) is a Docker image that provides PostgreSQL HA and Patroni bundled together:
+  + [PostgreSQL Streaming Replication](https://hevodata.com/learn/postgresql-streaming-replication/) based on [Replication Slots (WAL files)](https://hevodata.com/learn/postgresql-replication-slots/) 
 
-- [Patroni](https://github.com/zalando/patroni#how-patroni-works) is a template for PostgreSQL HA based on python scripts
-  + Notes:
-    - [Standby](https://opensource.zalando.com/postgres-operator/docs/user.html#setting-up-a-standby-cluster) cluster is a Patroni feature that first clones a database, and keeps replicating changes in readonly mode
+- [Patroni](https://github.com/zalando/patroni#how-patroni-works) is a template for PostgreSQL HA based on python scripts:
+  + [Standby](https://opensource.zalando.com/postgres-operator/docs/user.html#setting-up-a-standby-cluster) cluster is a Patroni feature that first clones a database, and keeps replicating changes in readonly mode
+  + [patroni spec](https://buildmedia.readthedocs.org/media/pdf/patroni/latest/patroni.pdf)
 
 - [Zalando](https://github.com/zalando/postgres-operator) is a postgres-operator that manages Patroni HA Replica PODs depend on created [postgresql](https://github.com/zalando/postgres-operator/blob/master/docs/reference/cluster_manifest.md) object (mainfest):
-  + Notes:
-    - Zalando is not well documented and developed rapidly, reading [sources](https://github.com/zalando/postgres-operator/tree/master/pkg) is a must!
-    -  [PostgreSQL on K8s at Zalando: Two years in production](https://av.tib.eu/media/52142) video with working details and known issues
+  + Zalando is not well documented and developed rapidly, reading [sources](https://github.com/zalando/postgres-operator/tree/master/pkg) is a must!
+  + [PostgreSQL on K8s at Zalando: Two years in production](https://av.tib.eu/media/52142) video with working details and known issues
 
-- Pgpool II
-  + Notes:
-    - [PgBouncer vs Pgpool-II](https://scalegrid.io/blog/postgresql-connection-pooling-part-4-pgbouncer-vs-pgpool/#:~:text=PgBouncer%20allows%20limiting%20connections%20per,overall%20number%20of%20connections%20only.&text=PgBouncer%20supports%20queuing%20at%20the,i.e.%20PgBouncer%20maintains%20the%20queue)
+- [Pgpool-II](https://www.pgpool.net/docs/latest/en/html/intro-whatis.html) manages a pool of PostgreSQL servers to achieve
+  + [PgBouncer vs Pgpool-II](https://scalegrid.io/blog/postgresql-connection-pooling-part-4-pgbouncer-vs-pgpool/#:~:text=PgBouncer%20allows%20limiting%20connections%20per,overall%20number%20of%20connections%20only.&text=PgBouncer%20supports%20queuing%20at%20the,i.e.%20PgBouncer%20maintains%20the%20queue)
 #### - Install [Zalando](https://github.com/zalando/postgres-operator) postgres-operator
 ```sh
 git clone https://github.com/zalando/postgres-operator.git
