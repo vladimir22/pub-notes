@@ -565,13 +565,13 @@ kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- patronictl list
 | postgres-db-site-a-1 | 10.42.0.194 | Sync Standby | running |  1 |         0 |
 +----------------------+-------------+--------------+---------+----+-----------+
 
-## Login into PG
+## - Connect as appuser
 DB_NAME=conjurdb
 DB_USERNAME=conjuruser
 
 ## - Connect as superuser
-#DB_NAME=postgres
-#DB_USERNAME=postgres
+DB_NAME=postgres
+DB_USERNAME=postgres
 
 DB_PASSWORD=$(kubectl get secret -n $SITEA_NS "$DB_USERNAME.$SITEA_NAME.credentials.postgresql.acid.zalan.do" -o jsonpath='{.data.password}' | base64 --decode)
 echo -e "DB_NAME='$DB_NAME'\nDB_USERNAME='$DB_USERNAME'\nDB_PASSWORD='$DB_PASSWORD'\n"
@@ -704,7 +704,7 @@ kubectl exec -it -n $SITEB_NS $SITEB_NAME-0 -- patronictl list
 #### - Switch 'SiteB' to ACTIVE and update tables 
 ```yaml
 
-## Connect as app user
+## - Connect as appuser
 DB_NAME=conjurdb
 DB_USERNAME=conjuruser
 
