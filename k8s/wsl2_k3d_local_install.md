@@ -371,8 +371,9 @@ helm install pgo . -n pgo
 #### - Create ConfigMap with [Custom ENVs for all Cluster PODs](https://github.com/zalando/postgres-operator/blob/master/docs/administrator.md#custom-pod-environment-variables) by default
 ```yaml
 
-## Create Default ENVs ConfigMap for PG Statefulset
-kubectl apply -n $CLUSTER_NS -f - <<EOF
+
+## Optinonal:  Create ConfigMap with default ENVs which will be added into PG Statefulset
+kubectl apply -n pgo -f - <<EOF
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -395,9 +396,13 @@ data:
   USE_WALG_BACKUP: "true"
   USE_WALG_RESTORE: "true"
 
+  #WALE_S3_ENDPOINT: http://storage-minio.s3.svc.cluster.local:9000
+  #WALE_S3_PREFIX: s3://foundation-pf/spilo/postgres-db-pg-cluster
+  #WALG_S3_ENDPOINT: http://storage-minio.s3.svc.cluster.local:9000
+  #WALG_S3_PREFIX: s3://foundation-pf/spilo/postgres-db-pg-cluster
+
   BACKUP_SCHEDULE: '*/3  * * * *' ## Every 3 minutes
   BACKUP_NUM_TO_RETAIN: "5"
-
 
   ## --- Clone Settings ---
   ## Clone creds can be specified in the "postgresql" object
@@ -420,16 +425,15 @@ data:
   ##CLONE_WAL_BUCKET_SCOPE_SUFFIX: "/889918f8-0c89-455d-b0bb-8cf0b799c011"
   ##CLONE_TARGET_TIME: "2025-12-19T12:40:33+00:00"
 EOF
-```
 
-#### - Link created ConfigMap to Zalando Operator
-```yaml
 ## Link ConfigMap inside the OperatorConfiguration
 kubectl edit OperatorConfiguration -n pgo pgo-postgres-operator
 ...
 configuration:
   kubernetes:
-    pod_environment_configmap: pf/postgres-pod-config
+    ## Do NOT specify namespace if ConfigMap must be taken from the namespace where 'postgresql' is created
+    #pod_environment_configmap: postgres-pod-config   
+    pod_environment_configmap: pgo/postgres-pod-config
 ...
 
 ## Restart Zalando Operator
@@ -445,16 +449,58 @@ klo -n $POD_NS $POD_NAME
 ```
 
 
-#### - Create 'original' empty `postgresql` cluster
+#### - Create 'SiteA' `postgresql` cluster 
 ```yaml
-CLUSTER_NS=pf
-CLUSTER_NAME=postgres-db-original 
+## Optional: cleanup backups using Minio UI: http://localhost:8081
 
-kubectl apply -n $CLUSTER_NS -f - <<EOF
+SITEA_NS=sa
+kubectl create ns $SITEA_NS
+SITEA_NAME=postgres-db-site-a
+
+## Create secrets with pre-defined passwords
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+type: Opaque
+kind: Secret
+metadata:
+  name: standby.$SITEA_NAME.credentials.postgresql.acid.zalan.do
+  namespace: $SITEA_NS
+stringData:
+  password: standbyPwd
+  username: standby
+EOF
+
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+type: Opaque
+kind: Secret
+metadata:
+  name: postgres.$SITEA_NAME.credentials.postgresql.acid.zalan.do
+  namespace: $SITEA_NS
+stringData:
+  password: postgresPwd
+  username: postgres
+EOF
+
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+type: Opaque
+kind: Secret
+metadata:
+  name: conjuruser.$SITEA_NAME.credentials.postgresql.acid.zalan.do
+  namespace: $SITEA_NS
+stringData:
+  password: conjuruserPwd
+  username: conjuruser
+EOF
+
+
+## SiteA: Create postgresql : https://github.com/zalando/postgres-operator/blob/v1.8.1/manifests/complete-postgres-manifest.yaml
+kubectl apply -n $SITEA_NS -f - <<EOF
 apiVersion: "acid.zalan.do/v1"
 kind: postgresql
 metadata:
-  name: $CLUSTER_NAME ## Cluster name prefix must match with "teamId" value !!!
+  name: $SITEA_NAME ## Cluster name prefix must match with "teamId" value !!!
 spec:
   teamId: "postgres-db"
   volume:
@@ -466,170 +512,413 @@ spec:
     - superuser
     - createdb
     conjurdb_user: []  # ordinary role for application
-
   ## Create db & assign owner
   databases:
     conjurdb: conjuruser  # dbname: owner
 
   postgresql:
     version: "14"
-EOF
+    parameters: ## addons for 'postgresql.conf': https://github.com/postgres/postgres/blob/master/src/backend/utils/misc/postgresql.conf.sample
+      log_statement: "all"
+      log_replication_commands: "on"
 
-## Check Statefulset ENVs
-kubectl get statefulset -n $CLUSTER_NS $CLUSTER_NAME -o yaml | grep env -A100
-kubectl exec -it -n $CLUSTER_NS $CLUSTER_NAME-0 -- env
+  patroni: ## addons for patroni 'postgres.yml': https://github.com/zalando/patroni/blob/master/postgres0.yml
+    synchronous_mode: true
+    synchronous_mode_strict: true
 
-## View Cluster POD logs
-kubectl logs -f -n $CLUSTER_NS $CLUSTER_NAME-0 
-```
-
-
-#### - Connect to the 'original' DB and write test data
-```bash
-## Connect to created database
-PG_HOST=$CLUSTER_NAME.$CLUSTER_NS.svc.cluster.local
-DB_NAME=conjurdb
-## Connect as DB owner
-DB_USERNAME=conjuruser
-DB_SECRET=conjuruser
-## Connect as APP user
-#DB_USERNAME=conjurdb_user
-#DB_SECRET=conjurdb-user
-## Connect as postgres user
-#PG_USERNAME=postgres
-#DB_SECRET=postgres
-DB_PASSWORD=$(kubectl get secret -n $CLUSTER_NS "$DB_SECRET.$CLUSTER_NAME.credentials.postgresql.acid.zalan.do" -o jsonpath='{.data.password}' | base64 --decode)
-echo "DB_PASSWORD = $DB_PASSWORD"
-kubectl delete pod pg-client
-kubectl run pg-client --rm --tty -i --restart='Never' --namespace default --image bitnami/postgresql \
---env="PGPASSWORD=$DB_PASSWORD" --command -- \
-psql --set=sslmode=require --host $PG_HOST -U $DB_USERNAME -d $DB_NAME
-
--- create table
-CREATE TABLE test (
-    test_id bigserial primary key,
-    test_name varchar(20) NOT NULL,
-    test_desc text NOT NULL,
-    date_added timestamp default NOW()
-);
--- insert data
-INSERT INTO test(test_name, test_desc) VALUES ('test_name_value', 'test_desc_value');
-
--- list all tables
-SELECT * FROM information_schema.tables WHERE table_catalog = 'conjurdb' and table_schema = 'public';
-
--- list data in the table
-SELECT * from public.test;
-
-\q
-```
-
-
-#### - View created backups
-```bash
-## View backups in the POD
-kubectl exec -it -n $CLUSTER_NS $CLUSTER_NAME-0 -- envdir "/run/etc/wal-e.d/env" wal-g backup-list
-
-## View Minio UI with created backups
-http://localhost:8081/minio/foundation-pf/spilo/
-```
-
-
-#### - Create postgresql '[clone](https://github.com/zalando/postgres-operator/blob/master/docs/user.md#clone-from-s3)'
-```bash
-## Create postgresql clone
-CLUSTER_CLONE_NS=pf
-CLUSTER_CLONE_NAME=postgres-db-clone
-
-kubectl create ns $CLUSTER_CLONE_NS
-
-kubectl apply -n $CLUSTER_CLONE_NS -f - <<EOF
-apiVersion: "acid.zalan.do/v1"
-kind: postgresql
-metadata:
-  name: $CLUSTER_CLONE_NAME
-spec:
-
-  teamId: "postgres-db"
-  volume:
-    size: 128Mi
-  numberOfInstances: 1
-  users:
-    ## Create users, set up permissions 
-    conjuruser:  # database owner
-    - superuser
-    - createdb
-    conjurdb_user: []  # role for application
-
-  ## Create db & assign owner
-  databases:
-    conjurdb: conjuruser  # dbname: owner
-
-  ## Create db with default users: https://github.com/zalando/postgres-operator/blob/master/docs/user.md#default-nologin-roles
+  ## Create DB with already created users inside: https://github.com/zalando/postgres-operator/blob/master/docs/user.md#default-nologin-roles
   #preparedDatabases:
   #  foo: {}
 
-  postgresql:
-    version: "14"
-
-  clone:
-    #uid: "889918f8-0c89-455d-b0bb-8cf0b799c011"
-    cluster: $CLUSTER_NAME
-    timestamp: "2022-06-06T16:50:00+00:00"
-    s3_endpoint: http://storage-minio.s3.svc.cluster.local:9000
-    s3_access_key_id: minio
-    s3_secret_access_key: minio123
-    s3_wal_path: "s3://foundation-pf/spilo/$CLUSTER_NAME/wal"
+  ## Create DB as clone from S3 backup
+  #clone:
+  ##  #uid: "889918f8-0c89-455d-b0bb-8cf0b799c011"
+  #  cluster: $SITEA_NAME
+  #  timestamp: "2022-06-15T16:50:00+00:00"
+  #  s3_endpoint: http://storage-minio.s3.svc.cluster.local:9000
+  #  s3_access_key_id: minio
+  #  s3_secret_access_key: minio123
+  #  s3_wal_path: "s3://foundation-pf/spilo/$SITEA_NAME/wal"
+  
 EOF
 
-## Check Statefulset ENVs
-kubectl get statefulset -n $CLUSTER_CLONE_NS $CLUSTER_CLONE_NAME -o yaml | grep env -A100
 
-## View PG Cluster logs
-kubectl logs -f -n $CLUSTER_CLONE_NS $CLUSTER_CLONE_NAME-0
-  ... INFO: no action. I am (postgres-db-clone-0) the leader with the lock
+## SiteA: Check Statefulset ENVs
+kubectl get statefulset -n $SITEA_NS $SITEA_NAME -o yaml | grep env -A100
+kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- env
+
+## SiteA: View Master logs
+kubectl logs -f -n $SITEA_NS $SITEA_NAME-0
+  #... INFO: no action. I am (postgres-db-original-0) the leader with the lock
   
-## View already created backups 
-kubectl exec -it -n $CLUSTER_CLONE_NS $CLUSTER_CLONE_NAME-0 -- envdir "/run/etc/wal-e.d/env" wal-g backup-list
+## SiteA: View Replica logs
+kubectl logs -f -n $SITEA_NS $SITEA_NAME-1
+  #... INFO: no action. I am a secondary (postgres-db-r1-1) and following a leader (postgres-db-r1-0)
+  
+## SiteA: View Patroni replicas
+kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- patronictl list
+
++ Cluster: postgres-db-site-a (7109447695371919429) +---------+----+-----------+
+| Member               | Host        | Role         | State   | TL | Lag in MB |
++----------------------+-------------+--------------+---------+----+-----------+
+| postgres-db-site-a-0 | 10.42.0.192 | Leader       | running |  1 |           |
+| postgres-db-site-a-1 | 10.42.0.194 | Sync Standby | running |  1 |         0 |
++----------------------+-------------+--------------+---------+----+-----------+
+
+## Login into PG
+DB_NAME=conjurdb
+DB_USERNAME=conjuruser
+
+## - Connect as superuser
+#DB_NAME=postgres
+#DB_USERNAME=postgres
+
+DB_PASSWORD=$(kubectl get secret -n $SITEA_NS "$DB_USERNAME.$SITEA_NAME.credentials.postgresql.acid.zalan.do" -o jsonpath='{.data.password}' | base64 --decode)
+echo -e "DB_NAME='$DB_NAME'\nDB_USERNAME='$DB_USERNAME'\nDB_PASSWORD='$DB_PASSWORD'\n"
+
+## SiteA: Create table
+kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- psql -d $DB_NAME -U $DB_USERNAME \
+-c " \
+CREATE TABLE test ( \
+    id bigserial primary key, \
+    name varchar(20) NOT NULL, \
+    notes text NOT NULL, \
+    added timestamp default NOW() \
+); \
+"
+
+## SiteA: Insert into table
+kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- psql -d $DB_NAME -U $DB_USERNAME \
+-c " INSERT INTO test(name, notes) VALUES ('test_name', 'test_notes'); "
+
+## SiteA(Leader): Select from table
+kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- psql -d $DB_NAME -U $DB_USERNAME \
+-c " SELECT * FROM test; "
+
+## SiteA(Replica): Select from table
+kubectl exec -it -n $SITEA_NS $SITEA_NAME-1 -- psql -d $DB_NAME -U $DB_USERNAME \
+-c " SELECT * FROM test; "
+
 ```
 
 
-#### - Connect to the 'clonned' DB and check that test data are present
-```bash
-## Connect to the DB conjur
-PG_HOST=$CLUSTER_CLONE_NAME.$CLUSTER_CLONE_NS.svc.cluster.local
+#### - Create 'SiteB' `postgresql` cluster 
+```yaml
+## Optional: cleanup backups using Minio UI localhost:8081
+
+SITEB_NS=sb
+kubectl create ns $SITEB_NS
+SITEB_NAME=postgres-db-site-b
+
+## Create secrets with pre-defined passwords
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+type: Opaque
+kind: Secret
+metadata:
+  name: standby.$SITEB_NAME.credentials.postgresql.acid.zalan.do
+  namespace: $SITEB_NS
+stringData:
+  password: standbyPwd
+  username: standby
+EOF
+
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+type: Opaque
+kind: Secret
+metadata:
+  name: postgres.$SITEB_NAME.credentials.postgresql.acid.zalan.do
+  namespace: $SITEB_NS
+stringData:
+  password: postgresPwd
+  username: postgres
+EOF
+
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+type: Opaque
+kind: Secret
+metadata:
+  name: conjuruser.$SITEB_NAME.credentials.postgresql.acid.zalan.do
+  namespace: $SITEB_NS
+stringData:
+  password: conjuruserPwd
+  username: conjuruser
+EOF
+
+
+## Create SiteB as a STANDBY : https://github.com/zalando/postgres-operator/blob/v1.8.1/manifests/standby-manifest.yaml
+kubectl apply -n $SITEB_NS -f - <<EOF
+apiVersion: "acid.zalan.do/v1"
+kind: postgresql
+metadata:
+  name: $SITEB_NAME ## Cluster name prefix must match with "teamId" value !!!
+spec:
+  teamId: "postgres-db" ## same value as in the site-a
+  volume:
+    size: 128Mi
+  numberOfInstances: 2
+
+  postgresql:
+    version: "14"
+    parameters: ## addons for 'postgresql.conf': https://github.com/postgres/postgres/blob/master/src/backend/utils/misc/postgresql.conf.sample
+      log_statement: "all"
+      log_replication_commands: "on"
+
+  standby: 
+    # s3_wal_path: "s3://mybucket/spilo/acid-minimal-cluster/abcd1234-2a4b-4b2a-8c9c-c1234defg567/wal/14/"
+    standby_host: "$SITEA_NAME.$SITEA_NS.svc.cluster.local"
+    # standby_port: "5432"
+
+  patroni: ## addons for patroni 'postgres.yml': https://github.com/zalando/patroni/blob/master/postgres0.yml
+    synchronous_mode: true
+    synchronous_mode_strict: true
+EOF
+
+
+## SiteB: Check Statefulset ENVs
+kubectl get statefulset -n $SITEB_NS $SITEB_NAME -o yaml | grep env -A100
+kubectl exec -it -n $SITEB_NS $SITEB_NAME-0 -- env
+
+## SiteB: View Master logs
+kubectl logs -f -n $SITEB_NS $SITEB_NAME-0
+  #... INFO: no action. I am (postgres-db-site-b-0), the standby leader with the lock
+  
+## SiteB: View Replica logs
+kubectl logs -f -n $SITEB_NS $SITEB_NAME-1
+  #... I am (postgres-db-site-b-1), a secondary, and following a standby leader (postgres-db-site-b-0)
+  
+## SiteB: View Patroni replicas
+kubectl exec -it -n $SITEB_NS $SITEB_NAME-0 -- patronictl list
+
++ Cluster: postgres-db-site-b (7109447695371919429) --+---------+----+-----------+
+| Member               | Host        | Role           | State   | TL | Lag in MB |
++----------------------+-------------+----------------+---------+----+-----------+
+| postgres-db-site-b-0 | 10.42.0.196 | Standby Leader | running |  1 |           |
+| postgres-db-site-b-1 | 10.42.0.198 | Replica        | running |  1 |         0 |
++----------------------+-------------+----------------+---------+----+-----------+
+
+```
+
+#### - Switch 'SiteB' to ACTIVE and update tables 
+```yaml
+
+## Connect as app user
 DB_NAME=conjurdb
-## Connect as DB owner
+DB_USERNAME=conjuruser
+
+## - Connect as superuser
+DB_NAME=postgres
+DB_USERNAME=postgres
+
+DB_PASSWORD=$(kubectl get secret -n $SITEB_NS "$DB_USERNAME.$SITEB_NAME.credentials.postgresql.acid.zalan.do" -o jsonpath='{.data.password}' | base64 --decode)
+echo -e "DB_NAME='$DB_NAME'\nDB_USERNAME='$DB_USERNAME'\nDB_PASSWORD='$DB_PASSWORD'\n"
+
+
+## SiteB(Leader): Select from table
+kubectl exec -it -n $SITEB_NS $SITEB_NAME-0 -- psql -d $DB_NAME -U $DB_USERNAME \
+-c " SELECT * FROM test; "
+
+## SiteB(Replica): Select from table
+kubectl exec -it -n $SITEB_NS $SITEB_NAME-1 -- psql -d $DB_NAME -U $DB_USERNAME \
+-c " SELECT * FROM test; "
+
+
+## SiteB: Switch to ACTIVE
+kubectl exec -it -n $SITEB_NS $SITEB_NAME-0 -- curl -s -XPATCH -d '{ "standby_cluster": null}' localhost:8008/config | jq .
+
+
+## SiteB: Insert into table
+kubectl exec -it -n $SITEB_NS $SITEB_NAME-0 -- psql -d $DB_NAME -U $DB_USERNAME \
+-c " INSERT INTO test(name, notes) VALUES ('site-b_name', 'site-b_notes'); "
+
+
+## SiteB(Leader): Select from table
+kubectl exec -it -n $SITEB_NS $SITEB_NAME-0 -- psql -d $DB_NAME -U $DB_USERNAME \
+-c " SELECT * FROM test; "
+
+## SiteB(Replica): Select from table
+kubectl exec -it -n $SITEB_NS $SITEB_NAME-1 -- psql -d $DB_NAME -U $DB_USERNAME \
+-c " SELECT * FROM test; "
+
+```
+
+
+#### - Switch 'SiteA' to STANDBY to sync updates
+```yaml
+
+## Login into PG
+
+## SiteA(Leader): Select from table
+kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- psql -d $DB_NAME -U $DB_USERNAME \
+-c " SELECT * FROM test; "
+
+## SiteA(Replica): Select from table
+kubectl exec -it -n $SITEA_NS $SITEA_NAME-1 -- psql -d $DB_NAME -U $DB_USERNAME \
+-c " SELECT * FROM test; "
+
+
+## SiteA: Switch to STANDBY
+kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- curl -s -XPATCH -d "{ \"standby_cluster\": { \"host\": \"$SITEB_NAME.$SITEB_NS.svc.cluster.local\", \"create_replica_methods\": [ \"basebackup_fast_xlog\" ] }}" localhost:8008/config | jq .
+...
+  "standby_cluster": {
+    "host": "postgres-db-site-b.sb.svc.cluster.local",
+    "create_replica_methods": [
+      "basebackup_fast_xlog"
+    ]
+  }
+...  
+
+
+## SiteA(Leader): Insert row into table
+kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- psql -d $DB_NAME -U $DB_USERNAME \
+-c " INSERT INTO test(name, notes) VALUES ('site-b_name', 'site-b_notes'); "
+
+
+## SiteA(Leader): Select from table
+kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- psql -d $DB_NAME -U $DB_USERNAME \
+-c " SELECT * FROM test; "
+
+## SiteA(Replica): Select from table
+kubectl exec -it -n $SITEA_NS $SITEA_NAME-1 -- psql -d $DB_NAME -U $DB_USERNAME \
+-c " SELECT * FROM test; "
+
+
+## SiteA: View Patroni replicas
+kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- patronictl list
+
+```
+
+#### - Switch back 'SiteB' to STANDBY and 'SiteA' to ACTIVE 
+```yaml
+
+## SiteA: Switch to ACTIVE
+kubectl exec -it -n $SITEB_NS $SITEB_NAME-0 -- curl -s -XPATCH -d '{ "standby_cluster": null}' localhost:8008/config | jq .
+
+## SiteA: View Patroni replicas
+kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- patronictl list
+
+
+## SiteB: Switch to STANDBY
+kubectl exec -it -n $SITEB_NS $SITEB_NAME-0 -- curl -s -XPATCH -d "{ \"standby_cluster\": { \"host\": \"$SITEA_NAME.$SITEA_NS.svc.cluster.local\", \"create_replica_methods\": [ \"basebackup_fast_xlog\" ] }}" localhost:8008/config | jq .
+
+## SiteB: View Patroni replicas
+kubectl exec -it -n $SITEB_NS $SITEB_NAME-0 -- patronictl list
+```
+
+
+
+#### - Additional commands
+```yaml
+## - Use SiteA(Leader)
+POD_NS=$SITEA_NS
+POD_NAME=$SITEA_NAME-0
+## - Use SiteA(Replica)
+POD_NS=$SITEA_NS
+POD_NAME=$SITEA_NAME-1
+
+## - Use SiteB(Leader)
+POD_NS=$SITEB_NS
+POD_NAME=$SITEB_NAME-0
+## - Use SiteB(Replica)
+POD_NS=$SITEB_NS
+POD_NAME=$SITEB_NAME-1
+
+
+## View log files
+kubectl exec -it -n $POD_NS $POD_NAME -- ls /home/postgres/pgdata/pgroot/pg_log
+
+## View logs
+kubectl exec -it -n $POD_NS $POD_NAME -- cat /home/postgres/pgdata/pgroot/pg_log/postgresql-3.log
+
+## View patroni replicas
+kubectl exec -it -n $POD_NS $POD_NAME -- patronictl list 
+
+## View patroni static settings: https://github.com/zalando/patroni/blob/master/postgres0.yml
+kubectl exec -it -n $POD_NS $POD_NAME -- cat postgres.yml
+
+## View Patroni dinamic settings: https://patroni.readthedocs.io/en/latest/SETTINGS.html#dynamic-configuration-settings 
+kubectl exec -it -n $POD_NS $POD_NAME -- curl -s localhost:8008/config | jq .
+
+## Edit patroni dynamic settings: 
+kubectl exec -it -n $POD_NS $POD_NAME -- patronictl edit-config
+
+## View PG config files
+kubectl exec -it -n $POD_NS $POD_NAME -- ls /home/postgres/pgdata/pgroot/data/
+
+## View pg_hba.conf(host-based authentication): https://www.postgresql.org/docs/current/auth-pg-hba-conf.html
+kubectl exec -it -n $POD_NS $POD_NAME -- cat /home/postgres/pgdata/pgroot/data/pg_hba.conf
+
+## View postgresql.conf:  https://github.com/postgres/postgres/blob/master/src/backend/utils/misc/postgresql.conf.sample
+kubectl exec -it -n $POD_NS $POD_NAME -- cat /home/postgres/pgdata/pgroot/data/postgresql.conf
+
+## View backup dir
+kubectl exec -it -n $POD_NS $POD_NAME -- ls /home/postgres/pgdata/pgroot/data/pg_wal
+
+## View wal-g backups 
+kubectl exec -it -n $POD_NS $POD_NAME -- envdir "/run/etc/wal-e.d/env" wal-g backup-list
+
+## View executable args
+kubectl exec -it -n $POD_NS $POD_NAME -- cat /home/postgres/pgdata/pgroot/data/postmaster.opts
+
+
+## Connect to the DB using pg-client POD
+## - Use SiteA
+SITE_NS=$SITEA_NS
+SITE_NAME=$SITEA_NAME
+## - Use SiteB
+SITE_NS=$SITEB_NS
+SITE_NAME=$SITEB_NAME
+
+## - Use Master
+PG_HOST=$SITE_NAME.$SITE_NS.svc.cluster.local
+## - Use Replica
+PG_HOST=$SITE_NAME-repl.$SITE_NS.svc.cluster.local
+
+## - Connect as DB owner
+DB_NAME=conjurdb
 DB_USERNAME=conjuruser
 DB_SECRET=conjuruser
-## Connect as APP user
-#DB_USERNAME=conjurdb_user
-#DB_SECRET=conjurdb-user
-DB_PASSWORD=$(kubectl get secret -n $CLUSTER_CLONE_NS "$DB_SECRET.$CLUSTER_CLONE_NAME.credentials.postgresql.acid.zalan.do" -o jsonpath='{.data.password}' | base64 --decode)
+## - Connect as APP user
+DB_USERNAME=conjurdb_user
+DB_SECRET=conjurdb-user
+## - Connect as superuser
+DB_NAME=postgres
+DB_USERNAME=postgres
+DB_SECRET=postgres
+
+## Resolve DB Password
+DB_PASSWORD=$(kubectl get secret -n $SITE_NS "$DB_SECRET.$SITE_NAME.credentials.postgresql.acid.zalan.do" -o jsonpath='{.data.password}' | base64 --decode)
 echo -e "\nPG_HOST='$PG_HOST' \\n\
 DB_NAME='$DB_NAME' \n\
 DB_USERNAME='$DB_USERNAME' \n\
 DB_PASSWORD='$DB_PASSWORD' \n"
-kubectl delete pod pg-client
-kubectl run pg-client --rm --tty -i --restart='Never' --namespace default --image bitnami/postgresql \
+
+## Create pg-client POD
+kubectl delete pod pg-client -n $SITE_NS
+kubectl run pg-client --rm --tty -i --restart='Never' -n $SITE_NS --image bitnami/postgresql \
 --env="PGPASSWORD=$DB_PASSWORD" --command -- \
 psql --set=sslmode=require --host $PG_HOST -U $DB_USERNAME -d $DB_NAME
 
 -- list all tables
+SELECT * FROM information_schema.tables;
 SELECT * FROM information_schema.tables WHERE table_catalog = 'conjurdb' and table_schema = 'public';
-
--- list data in the table
-SELECT * from public.test;
-```
+-- list 
+\q
 
 
-#### - Optional: Cleanup postgresql resources manually if Zalando Operator stuck
-```bash
-## Optional: Cleanup postgresql resources manually if Zalando was stuck
-PG_NS=$CLUSTER_CLONE_NS
-PG_NAME=$CLUSTER_CLONE_NAME
+## Cleanup postgresql resources manually if Zalando was stuck
+## - Use SiteA
+PG_NS=$SITEA_NS
+PG_NAME=$SITEA_NAME
+
+## - Use SiteB
+PG_NS=$SITEB_NS
+PG_NAME=$SITEB_NAME
+
+
 kubectl delete postgresql -n $PG_NS $PG_NAME
-
 kubectl delete statefulset -n $PG_NS $PG_NAME
 kubectl delete service -n $PG_NS $PG_NAME
 kubectl delete service -n $PG_NS $PG_NAME-repl
@@ -640,6 +929,42 @@ kubectl delete secret -n $PG_NS conjuruser.$PG_NAME.credentials.postgresql.acid.
 kubectl delete secret -n $PG_NS postgres.$PG_NAME.credentials.postgresql.acid.zalan.do
 kubectl delete secret -n $PG_NS standby.$PG_NAME.credentials.postgresql.acid.zalan.do
 kubectl delete pvc -n $PG_NS pgdata-$PG_NAME-0
+```
+
+
+#### - Connect to the 'clonned' DB and check that test data are present
+```bash
+## Connect to the DB conjur
+PG_HOST=$CLUSTER_CLONE_NAME.$CLUSTER_CLONE_NS.svc.cluster.local
+DB_NAME=conjurdb
+## - Connect as DB owner
+DB_USERNAME=conjuruser
+DB_SECRET=conjuruser
+## - Connect as APP user
+#DB_USERNAME=conjurdb_user
+#DB_SECRET=conjurdb-user
+## - Connect as superuser
+DB_NAME=postgres
+DB_USERNAME=postgres
+DB_SECRET=postgres
+
+DB_PASSWORD=$(kubectl get secret -n $CLUSTER_NS "$DB_SECRET.$CLUSTER_NAME.credentials.postgresql.acid.zalan.do" -o jsonpath='{.data.password}' | base64 --decode)
+echo -e "\nPG_HOST='$PG_HOST' \\n\
+DB_NAME='$DB_NAME' \n\
+DB_USERNAME='$DB_USERNAME' \n\
+DB_PASSWORD='$DB_PASSWORD' \n"
+kubectl delete pod pg-client -n $CLUSTER_CLONE_NS
+
+kubectl run pg-client --rm --tty -i --restart='Never' -n $CLUSTER_CLONE_NS --image bitnami/postgresql \
+--env="PGPASSWORD=$DB_PASSWORD" --command -- \
+psql --set=sslmode=require --host $PG_HOST -U $DB_USERNAME -d $DB_NAME
+
+-- list all tables
+SELECT * FROM information_schema.tables WHERE table_catalog = 'conjurdb' and table_schema = 'public';
+SELECT * FROM information_schema.tables;
+
+-- list data in the table
+SELECT * from public.test;
 ```
 
 
