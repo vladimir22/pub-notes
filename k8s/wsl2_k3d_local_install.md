@@ -585,7 +585,8 @@ CREATE TABLE test ( \
     name varchar(20) NOT NULL, \
     notes text NOT NULL, \
     added timestamp default NOW() \
-); \
+);"
+
 "
 
 ## SiteA: Insert into table
