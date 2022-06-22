@@ -442,6 +442,7 @@ kubectl delete pods -n pgo --all
 
 #### - View Zalando Operator logs
 ```bash
+## View Operator logs
 POD_NS=pgo
 POD_LABEL=app.kubernetes.io/name=postgres-operator
 POD_NAME=$(kubectl get pods -n $POD_NS -l "$POD_LABEL" -o jsonpath="{.items[0].metadata.name}")
@@ -671,9 +672,41 @@ spec:
     standby_host: "$SITEA_NAME.$SITEA_NS.svc.cluster.local"
     # standby_port: "5432"
 
-  patroni: ## addons for patroni 'postgres.yml': https://github.com/zalando/patroni/blob/master/postgres0.yml
+  patroni: ## addons for patroni 'postgres.yml': https://github.com/zalando/patroni/blob/master/postgres0.yml, https://patroni.readthedocs.io/en/latest/SETTINGS.html#postgresql
     synchronous_mode: true
     synchronous_mode_strict: true
+
+
+# Enables change data capture streams for defined database tables
+#  streams:
+#  - applicationId: test-app
+#    database: foo
+#    tables:
+#      data.state_pending_outbox:
+#        eventType: test-app.status-pending
+#      data.state_approved_outbox:
+#        eventType: test-app.status-approved
+#      data.orders_outbox:
+#        eventType: test-app.order-completed
+#        idColumn: o_id
+#        payloadColumn: o_payload
+
+
+
+## Create Cluster clone
+# restore a Postgres DB with point-in-time-recovery
+# with a non-empty timestamp, clone from an S3 bucket using the latest backup before the timestamp
+# with an empty/absent timestamp, clone from an existing alive cluster using pg_basebackup
+
+#clone:
+##  #uid: "889918f8-0c89-455d-b0bb-8cf0b799c011"
+#  cluster: $SITEA_NAME
+#  timestamp: "2022-06-15T16:50:00+00:00"
+#  s3_endpoint: http://storage-minio.s3.svc.cluster.local:9000
+#  s3_access_key_id: minio
+#  s3_secret_access_key: minio123
+#  s3_wal_path: "s3://foundation-pf/spilo/$SITEA_NAME/wal"
+
 EOF
 
 
@@ -773,7 +806,7 @@ kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- curl -s -XPATCH -d "{ \"standby_c
 
 ## SiteA(Leader): Insert row into table
 kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- psql -d $DB_NAME -U $DB_USERNAME \
--c " INSERT INTO test(name, notes) VALUES ('site-b_name', 'site-b_notes'); "
+-c " INSERT INTO test(name, notes) VALUES ('site-a_name', 'site-a_notes'); "
 
 
 ## SiteA(Leader): Select from table
@@ -794,10 +827,14 @@ kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- patronictl list
 ```yaml
 
 ## SiteA: Switch to ACTIVE
-kubectl exec -it -n $SITEB_NS $SITEB_NAME-0 -- curl -s -XPATCH -d '{ "standby_cluster": null}' localhost:8008/config | jq .
+kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- curl -s -XPATCH -d '{ "standby_cluster": null}' localhost:8008/config | jq .
 
 ## SiteA: View Patroni replicas
 kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- patronictl list
+
+## SiteA(Leader): View reolication status
+kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- psql -d $DB_NAME -U $DB_USERNAME \
+-c " select * from pg_stat_replication; "
 
 
 ## SiteB: Switch to STANDBY
@@ -805,6 +842,11 @@ kubectl exec -it -n $SITEB_NS $SITEB_NAME-0 -- curl -s -XPATCH -d "{ \"standby_c
 
 ## SiteB: View Patroni replicas
 kubectl exec -it -n $SITEB_NS $SITEB_NAME-0 -- patronictl list
+
+## SiteB(Leader): View reolication status
+kubectl exec -it -n $SITEB_NS $SITEB_NAME-0 -- psql -d $DB_NAME -U $DB_USERNAME \
+-c " select * from pg_stat_replication; "
+
 ```
 
 
@@ -826,8 +868,12 @@ POD_NS=$SITEB_NS
 POD_NAME=$SITEB_NAME-1
 
 
+## View patroni logs
+kubectl logs -f -n $POD_NS $POD_NAME
+
+
 ## View log files
-kubectl exec -it -n $POD_NS $POD_NAME -- ls /home/postgres/pgdata/pgroot/pg_log
+kubectl exec -it -n $POD_NS $POD_NAME -- ls -la /home/postgres/pgdata/pgroot/pg_log
 
 ## View logs
 kubectl exec -it -n $POD_NS $POD_NAME -- cat /home/postgres/pgdata/pgroot/pg_log/postgresql-3.log
