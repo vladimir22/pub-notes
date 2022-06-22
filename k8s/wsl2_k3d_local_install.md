@@ -879,7 +879,15 @@ kubectl exec -it -n $POD_NS $POD_NAME -- ls -la /home/postgres/pgdata/pgroot/pg_
 kubectl exec -it -n $POD_NS $POD_NAME -- cat /home/postgres/pgdata/pgroot/pg_log/postgresql-3.log
 
 ## View patroni replicas
-kubectl exec -it -n $POD_NS $POD_NAME -- patronictl list 
+kubectl exec -it -n $POD_NS $POD_NAME -- patronictl list
+
+
+## Reinit patroni replica $SITEA_NAME-1
+kubectl exec -it -n $POD_NS $POD_NAME -- patronictl reinit $SITEA_NAME $SITEA_NAME-1
+
+## Reinit patroni replica $SITEB_NAME-1
+kubectl exec -it -n $POD_NS $POD_NAME -- patronictl reinit $SITEB_NAME $SITEB_NAME-1
+
 
 ## View patroni static settings: https://github.com/zalando/patroni/blob/master/postgres0.yml
 kubectl exec -it -n $POD_NS $POD_NAME -- cat postgres.yml
