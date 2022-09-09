@@ -359,6 +359,9 @@ kubectl delete secrets -n $ECHOSERVER_NS demo-secret1 demo-secret2
 
 - [Pgpool-II](https://www.pgpool.net/docs/latest/en/html/intro-whatis.html) manages a pool of PostgreSQL servers to achieve
   + [PgBouncer vs Pgpool-II](https://scalegrid.io/blog/postgresql-connection-pooling-part-4-pgbouncer-vs-pgpool/#:~:text=PgBouncer%20allows%20limiting%20connections%20per,overall%20number%20of%20connections%20only.&text=PgBouncer%20supports%20queuing%20at%20the,i.e.%20PgBouncer%20maintains%20the%20queue)
+
+- [What Is sychronous_commit?]([url](https://www.percona.com/blog/2020/08/21/postgresql-synchronous_commit-options-and-synchronous-standby-replication/)
+- [patroni.synchronous_mode: true](https://patroni.readthedocs.io/en/latest/replication_modes.html#synchronous-mode)
 #### - Install [Zalando](https://github.com/zalando/postgres-operator) postgres-operator
 ```sh
 git clone https://github.com/zalando/postgres-operator.git
