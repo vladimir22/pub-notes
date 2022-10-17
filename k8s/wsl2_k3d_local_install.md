@@ -1280,3 +1280,100 @@ velero restore create --from-backup $BACKUP_NAME --include-namespaces default
 
 ## Check DB status again: curl http://localhost:8081/dummy-service/db
 ```
+
+
+### - [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#installing-and-upgrading-ansible) notes
+
+
+- Installing [pip](https://www.educative.io/answers/installing-pip3-in-ubuntu)
+```sh
+python3 --version
+Python 3.8.2
+
+sudo apt-get update
+k8s/N*#1
+sudo apt-get -y install python3-pip
+pip3 --version
+pip 20.0.2 from /usr/lib/python3/dist-packages/pip (python 3.8)
+```
+
+- Install [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#installing-and-upgrading-ansible)
+```sh
+python3 -m pip -V
+pip 20.0.2 from /usr/lib/python3/dist-packages/pip (python 3.8)
+
+python3 -m pip install --user ansible
+  WARNING: The scripts ansible, ansible-config, ansible-connection, ansible-console, ansible-doc, ansible-galaxy, ansible-inventory, ansible-playbook, ansible-pull and ansible-vault are installed in '/home/k8s/.local/bin' which is not on PATH.
+  Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+
+vi ~/.bash_profile
+export PATH="$PATH:/usr/local/go/bin:/home/k8s/.local/bin
+
+ansible --version
+ansible [core 2.13.5]
+  config file = None
+  configured module search path = ['/home/k8s/.ansible/plugins/modules', '/usr/share/ansible/plugins/modules']
+  ansible python module location = /home/k8s/.local/lib/python3.8/site-packages/ansible
+  ansible collection location = /home/k8s/.ansible/collections:/usr/share/ansible/collections
+  executable location = /home/k8s/.local/bin/ansible
+  python version = 3.8.10 (default, Jun 22 2022, 20:18:18) [GCC 9.4.0]
+  jinja version = 3.1.2
+  libyaml = True
+
+```
+
+- Install plugins
+
+https://docs.ansible.com/ansible/latest/collections/kubernetes/core/k8s_module.html#requirements
+ansible-galaxy collection install kubernetes.core
+
+
+- Write Ansible [Playbooks](https://www.digitalocean.com/community/tutorial_series/how-to-write-ansible-playbooks) and set up [inventory](https://www.digitalocean.com/community/tutorials/how-to-set-up-ansible-inventories) files
+
+```sh
+cd /mnt/d/Project/github/vladimir22/pub-notes/ansible
+
+cat <<EOF >inventory
+localhost
+EOF
+
+mkdir playbooks
+
+cat <<EOF > ./playbooks/hello-world.yaml
+---
+- name: "Playing hello-world.yaml"
+  hosts: localhost
+  connection: local
+  vars:
+  - KUBECONFIG: ~/.kube/config
+  tasks:
+  - name: Print ENVs
+    debug:
+      msg: "KUBECONFIG: {{ KUBECONFIG }}"
+
+  - name: Search for all Pods
+    kubernetes.core.k8s_info:
+      kind: Pod
+      #label_selectors:
+      #  - app = web
+      #  - tier in (dev, test)
+    register: k8s_out
+    
+  - name: Print k8s_out
+    debug:
+      msg: "k8s_out: {{ k8s_out.resources }}"      
+
+EOF
+```
+
+
+- Run Ansible playbook
+```sh
+export ANSIBLE_STDOUT_CALLBACK=yaml
+ansible-playbook -i inventory ./playbooks/hello-world.yaml
+```
+
+
+
+
+
