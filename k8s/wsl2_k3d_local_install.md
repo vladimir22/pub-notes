@@ -1282,10 +1282,9 @@ velero restore create --from-backup $BACKUP_NAME --include-namespaces default
 ```
 
 
-### - [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#installing-and-upgrading-ansible) notes
-
-
-- Installing [pip](https://www.educative.io/answers/installing-pip3-in-ubuntu)
+### - Tips how to install [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#installing-and-upgrading-ansible)
+Steps below might be helpful in ansible installation
+#### - Install [pip](https://www.educative.io/answers/installing-pip3-in-ubuntu)
 ```sh
 python3 --version
 Python 3.8.2
@@ -1296,8 +1295,7 @@ sudo apt-get -y install python3-pip
 pip3 --version
 pip 20.0.2 from /usr/lib/python3/dist-packages/pip (python 3.8)
 ```
-
-- Install [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#installing-and-upgrading-ansible)
+#### - Install [ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#installing-and-upgrading-ansible)
 ```sh
 python3 -m pip -V
 pip 20.0.2 from /usr/lib/python3/dist-packages/pip (python 3.8)
@@ -1319,16 +1317,14 @@ ansible [core 2.13.5]
   python version = 3.8.10 (default, Jun 22 2022, 20:18:18) [GCC 9.4.0]
   jinja version = 3.1.2
   libyaml = True
-
 ```
 
-- Install plugins
-
-https://docs.ansible.com/ansible/latest/collections/kubernetes/core/k8s_module.html#requirements
+#### - Install ansible [plugins](https://docs.ansible.com/ansible/latest/collections/), example:
+```sh
 ansible-galaxy collection install kubernetes.core
+```
 
-
-- Write Ansible [Playbooks](https://www.digitalocean.com/community/tutorial_series/how-to-write-ansible-playbooks) and set up [inventory](https://www.digitalocean.com/community/tutorials/how-to-set-up-ansible-inventories) files
+#### - Create test ansible [playbook](https://www.digitalocean.com/community/tutorial_series/how-to-write-ansible-playbooks) and [inventory](https://www.digitalocean.com/community/tutorials/how-to-set-up-ansible-inventories)
 
 ```sh
 cd /mnt/d/Project/github/vladimir22/pub-notes/ansible
@@ -1367,7 +1363,7 @@ EOF
 ```
 
 
-- Run Ansible playbook
+#### - Run ansible playbook
 ```sh
 export ANSIBLE_STDOUT_CALLBACK=yaml
 ansible-playbook -i inventory ./playbooks/hello-world.yaml
