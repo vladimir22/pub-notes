@@ -45,6 +45,7 @@ kubectl version --client
 
 #### - Instal [Helm](https://helm.sh/docs/intro/install)
 ```sh
+## https://github.com/helm/helm/releases
 curl -O https://get.helm.sh/helm-v3.7.1-linux-amd64.tar.gz
 tar -zxvf helm-v3.7.1-linux-amd64.tar.gz
 ls linux-amd64
