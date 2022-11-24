@@ -1375,158 +1375,38 @@ ansible-playbook -i inventory ./playbooks/hello-world.yaml
 #### - Open Kibana cosole
 `https://ingress.local/monitoring/kibana/app/dev_tools#/console`
 
-#### - Request [compact and aligned text (cat)](https://www.elastic.co/guide/en/elasticsearch/reference/current/cat.html)
-`GET _cat`
+#### - Get [compact and aligned text (cat)](https://www.elastic.co/guide/en/elasticsearch/reference/current/cat.html) response
 ```sh
+GET _cat
 =^.^=
-/_cat/allocation
 /_cat/shards
-/_cat/shards/{index}
-/_cat/master
 /_cat/nodes
-/_cat/tasks
 /_cat/indices
-/_cat/indices/{index}
-/_cat/segments
-/_cat/segments/{index}
-/_cat/count
-/_cat/count/{index}
-/_cat/recovery
-/_cat/recovery/{index}
-/_cat/health
-/_cat/pending_tasks
-/_cat/aliases
-/_cat/aliases/{alias}
-/_cat/thread_pool
-/_cat/thread_pool/{thread_pools}
-/_cat/plugins
-/_cat/fielddata
-/_cat/fielddata/{fields}
-/_cat/nodeattrs
-/_cat/repositories
-/_cat/snapshots/{repository}
-/_cat/templates
-/_cat/component_templates/_cat/ml/anomaly_detectors
-/_cat/ml/anomaly_detectors/{job_id}
-/_cat/ml/trained_models
-/_cat/ml/trained_models/{model_id}
-/_cat/ml/datafeeds
-/_cat/ml/datafeeds/{datafeed_id}
-/_cat/ml/data_frame/analytics
-/_cat/ml/data_frame/analytics/{id}
-/_cat/transforms
-/_cat/transforms/{transform_id}
-```
+...
 
-`GET _cat/nodes`
-```sh
+GET _cat/nodes
 10.42.2.207 75 100 11 2.19 3.33 4.05 dr - logging-es-data-hot-1
 10.42.0.57  34  87  0 0.93 0.89 0.82 mr * logging-es-master-0
 10.42.1.246 36  88  1 0.37 0.68 0.73 ir - logging-es-client-0
 10.42.1.237 41 100 12 0.37 0.68 0.73 dr - logging-es-data-hot-0
 10.42.0.58  70  91  1 0.93 0.89 0.82 ir - logging-es-client-1
 10.42.4.152 57  89  4 0.93 0.71 0.49 mr - logging-es-master-1
-```
 
-`GET _cat/shards`
-```sh
-.kibana-event-log-8.2.3-000001                                0 p STARTED                 10.42.2.207 logging-es-data-hot-1
-.kibana-event-log-8.2.3-000001                                0 r STARTED                 10.42.1.237 logging-es-data-hot-0
-.kibana_8.2.3_001                                             0 p STARTED                 10.42.2.207 logging-es-data-hot-1
-.kibana_8.2.3_001                                             0 r STARTED                 10.42.1.237 logging-es-data-hot-0
-.ds-.logs-deprecation.elasticsearch-default-2022.11.18-000001 0 p STARTED                 10.42.2.207 logging-es-data-hot-1
-.ds-.logs-deprecation.elasticsearch-default-2022.11.18-000001 0 r STARTED                 10.42.1.237 logging-es-data-hot-0
-.ds-ilm-history-5-2022.11.18-000001                           0 r STARTED                 10.42.2.207 logging-es-data-hot-1
-.ds-ilm-history-5-2022.11.18-000001                           0 p STARTED                 10.42.1.237 logging-es-data-hot-0
-.apm-agent-configuration                                      0 r STARTED                 10.42.2.207 logging-es-data-hot-1
-.apm-agent-configuration                                      0 p STARTED                 10.42.1.237 logging-es-data-hot-0
-.apm-custom-link                                              0 p STARTED                 10.42.2.207 logging-es-data-hot-1
-.apm-custom-link                                              0 r STARTED                 10.42.1.237 logging-es-data-hot-0
-.async-search                                                 0 p STARTED                 10.42.2.207 logging-es-data-hot-1
-.async-search                                                 0 r STARTED                 10.42.1.237 logging-es-data-hot-0
-.kibana_task_manager_8.2.3_001                                0 p STARTED                 10.42.2.207 logging-es-data-hot-1
-.kibana_task_manager_8.2.3_001                                0 r STARTED                 10.42.1.237 logging-es-data-hot-0
-.tasks                                                        0 p STARTED                 10.42.2.207 logging-es-data-hot-1
-.tasks                                                        0 r STARTED                 10.42.1.237 logging-es-data-hot-0
-.geoip_databases                                              0 r STARTED                 10.42.2.207 logging-es-data-hot-1
-.geoip_databases                                              0 p STARTED                 10.42.1.237 logging-es-data-hot-0
+GET _cat/shards
 .ds-logs-2022.11.23-000014                                    0 p STARTED 1133894 676.4mb 10.42.2.207 logging-es-data-hot-1
 .ds-logs-2022.11.23-000014                                    0 r STARTED 1133892 676.3mb 10.42.1.237 logging-es-data-hot-0
 .ds-logs-2022.11.23-000014                                    1 r STARTED 1134714     1gb 10.42.2.207 logging-es-data-hot-1
 .ds-logs-2022.11.23-000014                                    1 p STARTED 1134707 678.3mb 10.42.1.237 logging-es-data-hot-0
 .ds-logs-2022.11.23-000014                                    2 p STARTED 1134399 676.3mb 10.42.2.207 logging-es-data-hot-1
 .ds-logs-2022.11.23-000014                                    2 r STARTED 1134403 867.8mb 10.42.1.237 logging-es-data-hot-0
-```
+...
 
-`GET _cat/indices`
-```sh
+GET _cat/indices
 green open .ds-logs-2022.11.23-000014 h40SAB7kSv2i9rMcc5cCIw 3 1 3403000 0 4.5gb 1.9gb
 ```
 
-`PUT my_index`
-```json
-{
-  "acknowledged" : true,
-  "shards_acknowledged" : true,
-  "index" : "my_index"
-}
-```
-```
-POST my_index/_doc
-{
-  "my_doc": "my_doc value"
-}
-```
-
-```
-{
-  "_index" : "my_index",
-  "_id" : "d5YLqYQBttpEiOatsCu-",
-  "_version" : 1,
-  "result" : "created",
-  "_shards" : {
-    "total" : 2,
-    "successful" : 2,
-    "failed" : 0
-  },
-  "_seq_no" : 0,
-  "_primary_term" : 1
-}
-```
-
-
-`GET my_index`
-```json
-{
-  "my_index" : {
-    "aliases" : { },
-    "mappings" : { },
-    "settings" : {
-      "index" : {
-        "routing" : {
-          "allocation" : {
-            "include" : {
-              "_tier_preference" : "data_content"
-            }
-          }
-        },
-        "number_of_shards" : "1",
-        "provided_name" : "my_index",
-        "creation_date" : "1669282711670",
-        "number_of_replicas" : "1",
-        "uuid" : "lt1KHpD8Q_ugxze_4su_vg",
-        "version" : {
-          "created" : "8020399"
-        }
-      }
-    }
-  }
-}
-```
-
+#### - Index and docs
 ```sh
-DELETE my_index
-
 ## Create customized index 
 PUT my_index
 {
@@ -1537,8 +1417,35 @@ PUT my_index
 
 GET my_index
 
-## Number of index shards will be 10 (5 shards + 1 replica*5)
+## View index by shards (will be 10 = 5 shards + 1 replica*5)
 GET _cat/shards
+
+## Create document
+POST my_index/_doc
+{
+  "my_doc": "my_doc value"
+}
+
+## Update document
+POST my_index/_update/hZYzqYQBttpEiOatifJM
+{
+  "doc": {
+    "my_updated_field": "my_updated_field value"
+  }
+}
+
+## View created document
+GET my_index/_doc/hZYzqYQBttpEiOatifJM
+
+## View 10 documents in the index
+GET my_index/_search
+
+## View shards for doc id (doc id might not be real!)
+GET my_index/_search_shards?routing=hZYzqYQBttpEiOatifJM
+
+DELETE my_index/_doc/hZYzqYQBttpEiOatifJM
+
+DELETE my_index
 ```
 
 
