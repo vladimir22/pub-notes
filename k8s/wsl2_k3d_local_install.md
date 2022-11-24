@@ -1375,7 +1375,7 @@ ansible-playbook -i inventory ./playbooks/hello-world.yaml
 #### - Open Kibana cosole
 `https://ingress.local/monitoring/kibana/app/dev_tools#/console`
 
-#### - Get [compact and aligned text (cat)](https://www.elastic.co/guide/en/elasticsearch/reference/current/cat.html) response
+#### - Run [compact and aligned text (cat)](https://www.elastic.co/guide/en/elasticsearch/reference/current/cat.html) command
 ```sh
 GET _cat
 =^.^=
@@ -1405,9 +1405,9 @@ GET _cat/indices
 green open .ds-logs-2022.11.23-000014 h40SAB7kSv2i9rMcc5cCIw 3 1 3403000 0 4.5gb 1.9gb
 ```
 
-#### - Index and docs
+#### - Index commands
 ```sh
-## Create customized index 
+## Create index: https://www.elastic.co/guide/en/elasticsearch/reference/current/indices.html
 PUT my_index
 {
     "settings" : {
@@ -1443,9 +1443,14 @@ GET my_index/_search
 ## View shards for doc id (doc id might not be real!)
 GET my_index/_search_shards?routing=hZYzqYQBttpEiOatifJM
 
-DELETE my_index/_doc/hZYzqYQBttpEiOatifJM
+#DELETE my_index/_doc/hZYzqYQBttpEiOatifJM
 
-DELETE my_index
+#DELETE my_index
+
+GET _cat/repositories
+
+## Create snapshot: https://www.elastic.co/guide/en/elasticsearch/reference/current/snapshots-take-snapshot.html#manually-create-snapshot
+PUT _snapshot/s3_repo/my_snapshot_1?wait_for_completion=true
 ```
 
 
