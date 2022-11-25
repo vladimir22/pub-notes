@@ -1373,9 +1373,11 @@ ansible-playbook -i inventory ./playbooks/hello-world.yaml
 
 ### - Elasticsearch
 #### - Open Kibana cosole
+Kibana provides very convenient dev_tools console to send curl requests from the browser. 
 `https://ingress.local/monitoring/kibana/app/dev_tools#/console`
 
-#### - Run [compact and aligned text (cat)](https://www.elastic.co/guide/en/elasticsearch/reference/current/cat.html) command
+#### - Run CAT commands
+[compact and aligned text (cat)](https://www.elastic.co/guide/en/elasticsearch/reference/current/cat.html) request provide convenient readable response.
 ```sh
 GET _cat
 =^.^=
@@ -1405,7 +1407,9 @@ GET _cat/indices
 green open .ds-logs-2022.11.23-000014 h40SAB7kSv2i9rMcc5cCIw 3 1 3403000 0 4.5gb 1.9gb
 ```
 
-#### - Index commands
+#### - Update, backup, delete and restore ECK cluster
+Demo steps below show how to create index, document, snapshot(backup) and after that delete and restore ECK cluster. 
+Copy-paste this script into "Kibana dev_tools console" and run these requests step-by-step
 ```sh
 ## Create index: https://www.elastic.co/guide/en/elasticsearch/reference/current/indices.html
 PUT my_index
@@ -1414,43 +1418,187 @@ PUT my_index
         "number_of_shards" : "5"
     }
 }
-
 GET my_index
 
 ## View index by shards (will be 10 = 5 shards + 1 replica*5)
 GET _cat/shards
+## View shards for future any generated doc_id
+GET my_index/_search_shards?routing=hZYzqYQBttpEiOatifJM
 
 ## Create document
 POST my_index/_doc
 {
   "my_doc": "my_doc value"
 }
-
+## View 10 documents in the index
+GET my_index/_search
 ## Update document
-POST my_index/_update/hZYzqYQBttpEiOatifJM
+POST my_index/_update/6mJrqoQBhZoEIv4Ss0qM
 {
   "doc": {
     "my_updated_field": "my_updated_field value"
   }
 }
+GET my_index/_doc/6mJrqoQBhZoEIv4Ss0qM
 
-## View created document
-GET my_index/_doc/hZYzqYQBttpEiOatifJM
 
-## View 10 documents in the index
+
+## ------ Backup: https://www.elastic.co/guide/en/elasticsearch/reference/current/snapshots-take-snapshot.html#manually-create-snapshot
+
+## View created repos
+GET _snapshot
+## Create snapshot
+PUT _snapshot/s3_repo/my_snapshot_1?wait_for_completion=true
+GET _snapshot/s3_repo/*?verbose=false
+
+
+
+## ------ Restore: https://www.elastic.co/guide/en/elasticsearch/reference/current/snapshots-restore-snapshot.html#restore-snapshot-prereqs
+
+## Ensure the cluster contains a matching index template
+GET _index_template/*?filter_path=index_templates.name,index_templates.index_template.index_patterns,index_templates.index_template.data_stream
+
+
+## --- Restore single index ---
+## Restore index under the same name
+DELETE my_index
+POST _snapshot/s3_repo/my_snapshot_1/_restore
+{
+  "indices": "my_index"
+}
 GET my_index/_search
 
-## View shards for doc id (doc id might not be real!)
-GET my_index/_search_shards?routing=hZYzqYQBttpEiOatifJM
 
-#DELETE my_index/_doc/hZYzqYQBttpEiOatifJM
+## --- Restore to renamed index ---
+POST _snapshot/minio_s3_repo/my_snapshot_1/_restore
+{
+  "indices": "my_index",
+  "rename_pattern": "(.+)",
+  "rename_replacement": "renamed-$1"
+}
+GET renamed-my_index/_search
 
-#DELETE my_index
+# Delete the original index
+DELETE my_index
+# Change index name
+POST _reindex
+{
+  "source": {
+    "index": "renamed-my_index"
+  },
+  "dest": {
+    "index": "my_index"
+  }
+}
+GET my_index/_search
 
-GET _cat/repositories
 
-## Create snapshot: https://www.elastic.co/guide/en/elasticsearch/reference/current/snapshots-take-snapshot.html#manually-create-snapshot
-PUT _snapshot/s3_repo/my_snapshot_1?wait_for_completion=true
+
+## --- Delete and Restore whole cluster ---
+## https://www.elastic.co/guide/en/elasticsearch/reference/current/snapshots-restore-snapshot.html#restore-entire-cluster
+
+## Cleanup cluster
+#Temporarily stop indexing and turn off the following features
+PUT _cluster/settings
+{
+  "persistent": {
+    "ingest.geoip.downloader.enabled": false
+  }
+}
+POST _ilm/stop
+POST _ml/set_upgrade_mode?enabled=true
+PUT _cluster/settings
+{
+  "persistent": {
+    "xpack.monitoring.collection.enabled": false
+  }
+}
+POST _watcher/_stop
+## This lets you delete data streams and indices using wildcards
+PUT _cluster/settings
+{
+  "persistent": {
+    "action.destructive_requires_name": false
+  }
+}
+
+## Disable fluent-bit ds
+#kubectl -n monitoring patch daemonset logcollector-fluent-bit -p '{"spec": {"template": {"spec": {"nodeSelector": {"non-existing-node": "true"}}}}}'
+
+
+GET _data_stream
+DELETE _data_stream/*?expand_wildcards=all
+GET _data_stream
+
+
+GET _cat/templates
+DELETE _index_template/logs-idx-template
+DELETE _index_template/.kibana-event-log-8.2.3-template
+GET _index_template
+
+
+GET _cat/indices
+DELETE my_index
+DELETE .kibana-event-log-8.2.3-template
+DELETE .kibana-event-log-8.2.3-000001
+GET _all
+
+
+## Restore cluster
+GET _cat/snapshots
+GET _snapshot/minio_s3_repo/*?verbose=false
+POST _snapshot/minio_s3_repo/my_snapshot_1/_restore
+{
+  "indices": "*",
+  "include_global_state": true
+}
+GET _cluster/health
+
+
+## View restored data
+GET _data_stream
+GET _cat/templates
+GET _cat/indices
+GET .ds-logs-2022.11.24-000001/_search
+GET my_index/_search
+
+
+## Enable fluent-bit ds
+#kubectl -n monitoring patch daemonset logcollector-fluent-bit --type json -p='[{"op": "remove", "path": "/spec/template/spec/nodeSelector/non-existing-node"}]'
+
+
+## Enable GeoIP database downloader
+PUT _cluster/settings
+{
+  "persistent": {
+    "ingest.geoip.downloader.enabled": true
+  }
+}
+## Start ILM
+GET _ilm/status
+POST _ilm/start
+## Start ML
+GET _ml/info
+POST _ml/set_upgrade_mode?enabled=false
+## Enable monitoring
+PUT _cluster/settings
+{
+  "persistent": {
+    "xpack.monitoring.collection.enabled": true
+  }
+}
+## Start watcher
+GET  _watcher/stats
+POST _watcher/_start
+## Disable wildcards in index names
+PUT _cluster/settings
+{
+  "persistent": {
+    "action.destructive_requires_name": null
+  }
+}
+
+GET _cluster/health
 ```
 
 
