@@ -1373,11 +1373,11 @@ ansible-playbook -i inventory ./playbooks/hello-world.yaml
 
 ### - Elasticsearch
 #### - Open Kibana cosole
-Kibana provides very convenient dev_tools console to send curl requests from the browser. 
+Kibana provides very convenient "dev_tools console" to send curl requests from the browser. 
 `https://ingress.local/monitoring/kibana/app/dev_tools#/console`
 
 #### - Run CAT commands
-[compact and aligned text (cat)](https://www.elastic.co/guide/en/elasticsearch/reference/current/cat.html) request provide convenient readable response.
+[Compact and aligned text (cat)](https://www.elastic.co/guide/en/elasticsearch/reference/current/cat.html) requests provide convenient readable response.
 ```sh
 GET _cat
 =^.^=
@@ -1408,7 +1408,7 @@ green open .ds-logs-2022.11.23-000014 h40SAB7kSv2i9rMcc5cCIw 3 1 3403000 0 4.5gb
 ```
 
 #### - Update, backup, delete and restore ECK cluster
-Demo steps below show how to create index, document, snapshot(backup) and after that delete and restore ECK cluster. 
+Demo steps below show how to create index, document, snapshot(backup) and after that delete and restore ECK cluster.  
 Copy-paste this script into "Kibana dev_tools console" and run these requests step-by-step
 ```sh
 ## Create index: https://www.elastic.co/guide/en/elasticsearch/reference/current/indices.html
