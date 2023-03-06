@@ -1037,7 +1037,7 @@ SELECT * from public.test;
 
 
 
-### - Install [conjur-oss](https://kloeckner-i.github.io/db-operator)
+### - Install `conjur-oss`
 ```sh
 
 CONJUR_NS=conjur
@@ -1111,13 +1111,15 @@ API key for admin: 30pgvre3172ks7zqj13q11zm2rn16m5zq423rkb7j1r67nqn6azrsz
 ```
 
 
-### - Install [db-operator](https://kloeckner-i.github.io/db-operator)
-TODO: wait for `v.1.5.0` helm version [here](https://kloeckner-i.github.io/db-operator/index.yaml) which contains my [PR-130](https://github.com/kloeckner-i/db-operator/pull/130): 
+### - Install [db-operator](https://kloeckner-i.github.io/db-operator#quickstart)
 ```sh
-git clone https://github.com/zalando/postgres-operator.git
-cd /mnt/d/Project/github/kloeckner-i/db-operator/charts/db-operator 
-kubectl create ns db-oper
-helm install db-oper . -n db-oper
+VERSION=1.5.1
+NS=db-oper
+## Available versions: https://kloeckner-i.github.io/charts/index.yaml
+helm repo add kloeckneri https://kloeckner-i.github.io/charts/
+helm repo update kloeckneri
+kubectl create ns $NS
+helm install dbo kloeckneri/db-operator -n $NS --version $VERSION
 ```
 
 
