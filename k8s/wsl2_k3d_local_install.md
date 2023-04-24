@@ -593,8 +593,6 @@ CREATE TABLE test ( \
     added timestamp default NOW() \
 );"
 
-"
-
 ## SiteA: Insert into table
 kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- psql -d $DB_NAME -U $DB_USERNAME \
 -c " INSERT INTO test(name, notes) VALUES ('test_name', 'test_notes'); "
