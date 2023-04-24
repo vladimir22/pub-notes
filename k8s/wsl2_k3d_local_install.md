@@ -345,6 +345,147 @@ kubectl delete cm -n $ECHOSERVER_NS echoserver
 kubectl delete secrets -n $ECHOSERVER_NS demo-secret1 demo-secret2
 ```
 
+### - Install MySQL
+#### - Install [bitnami/mysql](https://bitnami.com/stack/mysql/helm) helm chart
+```sh
+## Install MySQL helm chart: https://github.com/bitnami/charts/blob/main/bitnami/mysql/values.yaml#L112
+MYSQL_NS=db
+kubectl create ns $MYSQL_NS
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm install db bitnami/mysql -n $MYSQL_NS --set auth.rootPassword=root
+
+## Install db client:
+MYSQL_ROOT_PASSWORD=$(kubectl get secret --namespace db db-mysql -o jsonpath="{.data.mysql-root-password}" | base64 -d)
+echo $MYSQL_ROOT_PASSWORD
+kubectl run db-mysql-client --rm --tty -i --restart='Never' --image  docker.io/bitnami/mysql:8.0.33-debian-11-r0 --namespace db --env MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD --command -- bash
+mysql -h db-mysql.db.svc.cluster.local -uroot -p"$MYSQL_ROOT_PASSWORD"
+
+## Create DB: https://www.javatpoint.com/mysql-create-database
+CREATE DATABASE testdb; 
+SHOW CREATE DATABASE testdb;   
+SHOW DATABASES; 
+USE testdb;   
+
+## Create tables: https://www.javatpoint.com/mysql-create-table
+CREATE TABLE Clients(
+    id int NOT NULL AUTO_INCREMENT,  
+    name varchar(45) NOT NULL,  
+    description varchar(45) NOT NULL,  
+    PRIMARY KEY (id)  
+); 
+
+CREATE TABLE Drivers(
+    id int NOT NULL AUTO_INCREMENT,  
+    name varchar(45) NOT NULL,  
+    description varchar(45) NOT NULL,  
+    PRIMARY KEY (id)  
+);
+
+CREATE TABLE Cars(
+    id int NOT NULL AUTO_INCREMENT,  
+    name varchar(45) NOT NULL,  
+    description varchar(45) NOT NULL,
+    driver_id int NOT NULL,
+    PRIMARY KEY (id)  
+); 
+
+CREATE TABLE Orders(
+    id int NOT NULL AUTO_INCREMENT,  
+    name varchar(45) NOT NULL,
+    description varchar(45) NOT NULL,
+    client_id int NOT NULL,
+    driver_id int NOT NULL,
+    PRIMARY KEY (id)  
+); 
+
+INSERT INTO Clients (id, name, description)     
+VALUES 
+(1,'Client1', 'Test Client1'),     
+(2,'Client2', 'Test Client2'),     
+(3,'Client3', 'Test Client3'),  
+(4,'Client4', 'Test Client4'),    
+(5,'Client5', 'Test Client5'),
+(6,'Client6', 'Test Client6'),
+(7,'Client7', 'Test Client7'),
+(8,'Client8', 'Test Client8'),
+(9,'Client9', 'Test Client9');
+
+INSERT INTO Drivers (id, name, description)     
+VALUES 
+(1,'Driver1', 'Test Driver1'),     
+(2,'Driver2', 'Test Driver2'),     
+(3,'Driver3', 'Test Driver3'),  
+(4,'Driver4', 'Test Driver4'),    
+(5,'Driver5', 'Test Driver5'),
+(6,'Driver6', 'Test Driver6'),
+(7,'Driver7', 'Test Driver7'),
+(8,'Driver8', 'Test Driver8'),
+(9,'Driver9', 'Test Driver9'); 
+
+INSERT INTO Cars (id, name, description, driver_id)     
+VALUES 
+(1,'Car1', 'Test Car1', 1),     
+(2,'Car2', 'Test Car2', 2),     
+(3,'Car3', 'Test Car3', 3),  
+(4,'Car4', 'Test Car4', 4),    
+(5,'Car5', 'Test Car5', 5),
+(6,'Car6', 'Test Car6', 6),
+(7,'Car7', 'Test Car7', 7),
+(8,'Car8', 'Test Car8', 8),
+(9,'Car9', 'Test Car9', 9); 
+
+INSERT INTO Orders (id, name, description, client_id, driver_id)     
+VALUES 
+(1,'Order1', 'Test Order1', 1, 1),     
+(2,'Order2', 'Test Order2', 2, 2),     
+(3,'Order3', 'Test Order3', 3, 3),  
+(4,'Order4', 'Test Order4', 4, 4),    
+(5,'Order5', 'Test Order5', 5, 5),
+(6,'Order6', 'Test Order6', 6, 6),
+(7,'Order7', 'Test Order7', 7, 7),
+(8,'Order8', 'Test Order8', 8, 8),
+(9,'Order9', 'Test Order9', 9, 9); 
+```
+
+#### - Play with [EXPLAIN](https://habr.com/ru/companies/citymobil/articles/545004) command
+```sh
+EXPLAIN SELECT Clients.id, Clients.name, Drivers.name, Orders.name
+        FROM Clients
+        JOIN Orders ON Orders.client_id = Clients.id
+        JOIN Drivers ON Orders.driver_id = Drivers.id;
++----+-------------+---------+------------+--------+---------------+---------+---------+-------------------------+------+----------+-------+
+| id | select_type | table   | partitions | type   | possible_keys | key     | key_len | ref                     | rows | filtered | Extra |
++----+-------------+---------+------------+--------+---------------+---------+---------+-------------------------+------+----------+-------+
+|  1 | SIMPLE      | Orders  | NULL       | ALL    | NULL          | NULL    | NULL    | NULL                    |    9 |   100.00 | NULL  |
+|  1 | SIMPLE      | Clients | NULL       | eq_ref | PRIMARY       | PRIMARY | 4       | testdb.Orders.client_id |    1 |   100.00 | NULL  |
+|  1 | SIMPLE      | Drivers | NULL       | eq_ref | PRIMARY       | PRIMARY | 4       | testdb.Orders.driver_id |    1 |   100.00 | NULL  |
++----+-------------+---------+------------+--------+---------------+---------+---------+-------------------------+------+----------+-------+
+3 rows in set, 1 warning (0.01 sec)
+
+EXPLAIN SELECT id, (SELECT 1 FROM Orders WHERE client_id = t1.id LIMIT 1)
+       FROM (SELECT id FROM Drivers LIMIT 5) AS t1
+       UNION
+       SELECT driver_id, (SELECT @var1 FROM Cars LIMIT 1)
+       FROM (
+           SELECT driver_id, (SELECT 1 FROM Clients)
+           FROM Orders LIMIT 5
+       ) AS t2;
++----+----------------------+------------+------------+-------+---------------+---------+---------+------+------+----------+-----------------+
+| id | select_type          | table      | partitions | type  | possible_keys | key     | key_len | ref  | rows | filtered | Extra           |
++----+----------------------+------------+------------+-------+---------------+---------+---------+------+------+----------+-----------------+
+|  1 | PRIMARY              | <derived3> | NULL       | ALL   | NULL          | NULL    | NULL    | NULL |    5 |   100.00 | NULL            |
+|  3 | DERIVED              | Drivers    | NULL       | index | NULL          | PRIMARY | 4       | NULL |    9 |   100.00 | Using index     |
+|  2 | DEPENDENT SUBQUERY   | Orders     | NULL       | ALL   | NULL          | NULL    | NULL    | NULL |    9 |    11.11 | Using where     |
+|  4 | UNION                | <derived6> | NULL       | ALL   | NULL          | NULL    | NULL    | NULL |    5 |   100.00 | NULL            |
+|  6 | DERIVED              | Orders     | NULL       | ALL   | NULL          | NULL    | NULL    | NULL |    9 |   100.00 | NULL            |
+|  7 | SUBQUERY             | Clients    | NULL       | index | NULL          | PRIMARY | 4       | NULL |    9 |   100.00 | Using index     |
+|  5 | UNCACHEABLE SUBQUERY | Cars       | NULL       | index | NULL          | PRIMARY | 4       | NULL |    9 |   100.00 | Using index     |
+|  8 | UNION RESULT         | <union1,4> | NULL       | ALL   | NULL          | NULL    | NULL    | NULL | NULL |     NULL | Using temporary |
++----+----------------------+------------+------------+-------+---------------+---------+---------+------+------+----------+-----------------+
+8 rows in set, 2 warnings (0.00 sec)       
+```
+
+
 ### - Install Postgres Operator
 *Theory*:
 - [Spilo](https://github.com/zalando/spilo) is a Docker image that provides PostgreSQL HA and Patroni bundled together:
