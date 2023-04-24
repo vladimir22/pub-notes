@@ -368,7 +368,7 @@ kubectl delete secrets -n $ECHOSERVER_NS demo-secret1 demo-secret2
 #### - Install [Zalando](https://github.com/zalando/postgres-operator) postgres-operator
 ```sh
 git clone https://github.com/zalando/postgres-operator.git
-cd /mnt/d/Project/github/zalando/postgres-operator/charts/postgres-operator
+cd ./postgres-operator/charts/postgres-operator
 kubectl create ns pgo
 helm install pgo . -n pgo
 ```
