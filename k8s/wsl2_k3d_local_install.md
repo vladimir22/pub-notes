@@ -485,7 +485,6 @@ EXPLAIN SELECT id, (SELECT 1 FROM Orders WHERE client_id = t1.id LIMIT 1)
 8 rows in set, 2 warnings (0.00 sec)       
 ```
 
-
 ### - Install Postgres Operator
 *Theory*:
 - [Spilo](https://github.com/zalando/spilo) is a Docker image that provides PostgreSQL HA and Patroni bundled together:
