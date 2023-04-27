@@ -357,6 +357,7 @@ helm install db bitnami/mysql -n $MYSQL_NS --set auth.rootPassword=root
 ## Install db client:
 MYSQL_ROOT_PASSWORD=$(kubectl get secret --namespace db db-mysql -o jsonpath="{.data.mysql-root-password}" | base64 -d)
 echo $MYSQL_ROOT_PASSWORD
+kubectl delete pod db-mysql-client -n db
 kubectl run db-mysql-client --rm --tty -i --restart='Never' --image  docker.io/bitnami/mysql:8.0.33-debian-11-r0 --namespace db --env MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD --command -- bash
 mysql -h db-mysql.db.svc.cluster.local -uroot -p"$MYSQL_ROOT_PASSWORD"
 
