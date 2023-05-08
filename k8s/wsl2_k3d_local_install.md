@@ -344,6 +344,63 @@ kubectl delete service -n $ECHOSERVER_NS --all
 kubectl delete cm -n $ECHOSERVER_NS echoserver
 kubectl delete secrets -n $ECHOSERVER_NS demo-secret1 demo-secret2
 ```
+### - Install Strimzi Kafka
+
+```sh
+## Create Kafka Cluster: https://strimzi.io/quickstarts/
+kubectl create namespace kafka
+
+
+## https://github.com/strimzi/strimzi-kafka-operator/releases/download/0.34.0/strimzi-cluster-operator-0.34.0.yaml
+kubectl create -f 'https://strimzi.io/install/latest?namespace=kafka' -n kafka
+
+deployment.apps/strimzi-cluster-operator created
+clusterrole.rbac.authorization.k8s.io/strimzi-kafka-broker created
+rolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator-leader-election created
+serviceaccount/strimzi-cluster-operator created
+customresourcedefinition.apiextensions.k8s.io/kafkaconnects.kafka.strimzi.io created
+clusterrole.rbac.authorization.k8s.io/strimzi-cluster-operator-namespaced created
+rolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator-watched created
+customresourcedefinition.apiextensions.k8s.io/kafkaconnectors.kafka.strimzi.io created
+customresourcedefinition.apiextensions.k8s.io/kafkabridges.kafka.strimzi.io created
+customresourcedefinition.apiextensions.k8s.io/kafkamirrormakers.kafka.strimzi.io created
+clusterrole.rbac.authorization.k8s.io/strimzi-entity-operator created
+clusterrole.rbac.authorization.k8s.io/strimzi-cluster-operator-global created
+clusterrole.rbac.authorization.k8s.io/strimzi-kafka-client created
+clusterrolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator-kafka-client-delegation created
+customresourcedefinition.apiextensions.k8s.io/strimzipodsets.core.strimzi.io created
+rolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator created
+rolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator-entity-operator-delegation created
+clusterrole.rbac.authorization.k8s.io/strimzi-cluster-operator-watched created
+clusterrole.rbac.authorization.k8s.io/strimzi-cluster-operator-leader-election created
+clusterrolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator created
+customresourcedefinition.apiextensions.k8s.io/kafkamirrormaker2s.kafka.strimzi.io created
+customresourcedefinition.apiextensions.k8s.io/kafkas.kafka.strimzi.io created
+customresourcedefinition.apiextensions.k8s.io/kafkarebalances.kafka.strimzi.io created
+customresourcedefinition.apiextensions.k8s.io/kafkatopics.kafka.strimzi.io created
+clusterrolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator-kafka-broker-delegation created
+configmap/strimzi-cluster-operator created
+customresourcedefinition.apiextensions.k8s.io/kafkausers.kafka.strimzi.io created
+
+kubectl get pod -n kafka --watch
+kubectl logs deployment/strimzi-cluster-operator -n kafka -f
+
+# Apply the `Kafka` Cluster CR file
+kubectl apply -f https://strimzi.io/examples/latest/kafka/kafka-persistent-single.yaml -n kafka 
+kubectl wait kafka/my-cluster --for=condition=Ready --timeout=300s -n kafka 
+
+## Create producer
+kubectl -n kafka run kafka-producer -ti --image=quay.io/strimzi/kafka:0.34.0-kafka-3.4.0 --rm=true --restart=Never -- bin/kafka-console-producer.sh --bootstrap-server my-cluster-kafka-bootstrap:9092 --topic my-topic
+## Create consumer
+kubectl -n kafka run kafka-consumer -ti --image=quay.io/strimzi/kafka:0.34.0-kafka-3.4.0 --rm=true --restart=Never -- bin/kafka-console-consumer.sh --bootstrap-server my-cluster-kafka-bootstrap:9092 --topic my-topic --from-beginning
+
+## Deleting your Apache Kafka cluster
+kubectl -n kafka delete $(kubectl get strimzi -o name -n kafka)
+kubectl -n kafka delete -f 'https://strimzi.io/install/latest?namespace=kafka'
+
+
+```
+
 
 ### - Install MySQL
 #### - Install [bitnami/mysql](https://bitnami.com/stack/mysql/helm) helm chart
