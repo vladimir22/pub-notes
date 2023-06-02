@@ -540,7 +540,14 @@ EXPLAIN SELECT id, (SELECT 1 FROM Orders WHERE client_id = t1.id LIMIT 1)
 |  5 | UNCACHEABLE SUBQUERY | Cars       | NULL       | index | NULL          | PRIMARY | 4       | NULL |    9 |   100.00 | Using index     |
 |  8 | UNION RESULT         | <union1,4> | NULL       | ALL   | NULL          | NULL    | NULL    | NULL | NULL |     NULL | Using temporary |
 +----+----------------------+------------+------------+-------+---------------+---------+---------+------+------+----------+-----------------+
-8 rows in set, 2 warnings (0.00 sec)       
+8 rows in set, 2 warnings (0.00 sec) 
+
+
+## Delete MySQL:
+kubectl delete pod db-mysql-client -n db
+helm delete db -n db
+
+
 ```
 
 ### - Install Postgres Operator
