@@ -385,14 +385,69 @@ customresourcedefinition.apiextensions.k8s.io/kafkausers.kafka.strimzi.io create
 kubectl get pod -n kafka --watch
 kubectl logs deployment/strimzi-cluster-operator -n kafka -f
 
-# Apply the `Kafka` Cluster CR file
-kubectl apply -f https://strimzi.io/examples/latest/kafka/kafka-persistent-single.yaml -n kafka 
-kubectl wait kafka/my-cluster --for=condition=Ready --timeout=300s -n kafka 
+## Create Cluster
+KAFKA_NS=kafka
+kubectl apply -n $KAFKA_NS -f - <<EOF
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: my-cluster
+spec:
+  kafka:
+    version: 3.4.0
+    replicas: 1
+    listeners:
+      - name: plain
+        port: 9092
+        type: cluster-ip
+        tls: false
+        configuration:
+          brokers:
+          - broker: 0
+            advertisedHost: my-cluster-kafka-plain-0.kafka.svc
+            advertisedPort: 9092
+      #- name: tls
+      #  port: 9093
+      #  type: cluster-ip
+      #  tls: true
+      #  authentication:
+      #    type: tls
+    config:
+      offsets.topic.replication.factor: 1
+      transaction.state.log.replication.factor: 1
+      transaction.state.log.min.isr: 1
+      default.replication.factor: 1
+      min.insync.replicas: 1
+      inter.broker.protocol.version: "3.4"
+    storage:
+      type: jbod
+      volumes:
+      - id: 0
+        type: persistent-claim
+        size: 1Gi
+        deleteClaim: false
+  zookeeper:
+    replicas: 1
+    storage:
+      type: persistent-claim
+      size: 1Gi
+      deleteClaim: false
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}
+EOF
+
 
 ## Create producer
-kubectl -n kafka run kafka-producer -ti --image=quay.io/strimzi/kafka:0.34.0-kafka-3.4.0 --rm=true --restart=Never -- bin/kafka-console-producer.sh --bootstrap-server my-cluster-kafka-bootstrap:9092 --topic my-topic
+kubectl -n kafka run kafka-producer -ti --image=quay.io/strimzi/kafka:0.34.0-kafka-3.4.0 --rm=true --restart=Never -- bin/kafka-console-producer.sh --bootstrap-server my-cluster-kafka-plain-bootstrap:9092 --topic my-topic2
 ## Create consumer
-kubectl -n kafka run kafka-consumer -ti --image=quay.io/strimzi/kafka:0.34.0-kafka-3.4.0 --rm=true --restart=Never -- bin/kafka-console-consumer.sh --bootstrap-server my-cluster-kafka-bootstrap:9092 --topic my-topic --from-beginning
+kubectl -n kafka run kafka-consumer -ti --image=quay.io/strimzi/kafka:0.34.0-kafka-3.4.0 --rm=true --restart=Never -- bin/kafka-console-consumer.sh --bootstrap-server my-cluster-kafka-plain-bootstrap:9092 --topic my-topic2 --from-beginning
+
+
+## Set up Local Access
+#Add hosts: C:\Windows\System32\drivers\etc\hosts  127.0.0.1 my-cluster-kafka-plain-0.kafka.svc
+kubectl port-forward svc/my-cluster-kafka-plain-bootstrap -n kafka 9092:9092
+
 
 ## Deleting your Apache Kafka cluster
 kubectl -n kafka delete $(kubectl get strimzi -o name -n kafka)
