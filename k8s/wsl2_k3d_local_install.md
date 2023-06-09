@@ -344,46 +344,47 @@ kubectl delete service -n $ECHOSERVER_NS --all
 kubectl delete cm -n $ECHOSERVER_NS echoserver
 kubectl delete secrets -n $ECHOSERVER_NS demo-secret1 demo-secret2
 ```
+
+
 ### - Install Strimzi Kafka
 
 ```sh
-## Create Kafka Cluster: https://strimzi.io/quickstarts/
-kubectl create namespace kafka
-
-
+## Install Strimzi Kafka: https://strimzi.io/quickstarts/
+KAFKA_NS=kafka
+kubectl create namespace $KAFKA_NS
 ## https://github.com/strimzi/strimzi-kafka-operator/releases/download/0.34.0/strimzi-cluster-operator-0.34.0.yaml
 kubectl create -f 'https://strimzi.io/install/latest?namespace=kafka' -n kafka
+...
+      deployment.apps/strimzi-cluster-operator created
+      clusterrole.rbac.authorization.k8s.io/strimzi-kafka-broker created
+      rolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator-leader-election created
+      serviceaccount/strimzi-cluster-operator created
+      customresourcedefinition.apiextensions.k8s.io/kafkaconnects.kafka.strimzi.io created
+      clusterrole.rbac.authorization.k8s.io/strimzi-cluster-operator-namespaced created
+      rolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator-watched created
+      customresourcedefinition.apiextensions.k8s.io/kafkaconnectors.kafka.strimzi.io created
+      customresourcedefinition.apiextensions.k8s.io/kafkabridges.kafka.strimzi.io created
+      customresourcedefinition.apiextensions.k8s.io/kafkamirrormakers.kafka.strimzi.io created
+      clusterrole.rbac.authorization.k8s.io/strimzi-entity-operator created
+      clusterrole.rbac.authorization.k8s.io/strimzi-cluster-operator-global created
+      clusterrole.rbac.authorization.k8s.io/strimzi-kafka-client created
+      clusterrolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator-kafka-client-delegation created
+      customresourcedefinition.apiextensions.k8s.io/strimzipodsets.core.strimzi.io created
+      rolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator created
+      rolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator-entity-operator-delegation created
+      clusterrole.rbac.authorization.k8s.io/strimzi-cluster-operator-watched created
+      clusterrole.rbac.authorization.k8s.io/strimzi-cluster-operator-leader-election created
+      clusterrolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator created
+      customresourcedefinition.apiextensions.k8s.io/kafkamirrormaker2s.kafka.strimzi.io created
+      customresourcedefinition.apiextensions.k8s.io/kafkas.kafka.strimzi.io created
+      customresourcedefinition.apiextensions.k8s.io/kafkarebalances.kafka.strimzi.io created
+      customresourcedefinition.apiextensions.k8s.io/kafkatopics.kafka.strimzi.io created
+      clusterrolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator-kafka-broker-delegation created
+      configmap/strimzi-cluster-operator created
+      customresourcedefinition.apiextensions.k8s.io/kafkausers.kafka.strimzi.io created
 
-deployment.apps/strimzi-cluster-operator created
-clusterrole.rbac.authorization.k8s.io/strimzi-kafka-broker created
-rolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator-leader-election created
-serviceaccount/strimzi-cluster-operator created
-customresourcedefinition.apiextensions.k8s.io/kafkaconnects.kafka.strimzi.io created
-clusterrole.rbac.authorization.k8s.io/strimzi-cluster-operator-namespaced created
-rolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator-watched created
-customresourcedefinition.apiextensions.k8s.io/kafkaconnectors.kafka.strimzi.io created
-customresourcedefinition.apiextensions.k8s.io/kafkabridges.kafka.strimzi.io created
-customresourcedefinition.apiextensions.k8s.io/kafkamirrormakers.kafka.strimzi.io created
-clusterrole.rbac.authorization.k8s.io/strimzi-entity-operator created
-clusterrole.rbac.authorization.k8s.io/strimzi-cluster-operator-global created
-clusterrole.rbac.authorization.k8s.io/strimzi-kafka-client created
-clusterrolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator-kafka-client-delegation created
-customresourcedefinition.apiextensions.k8s.io/strimzipodsets.core.strimzi.io created
-rolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator created
-rolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator-entity-operator-delegation created
-clusterrole.rbac.authorization.k8s.io/strimzi-cluster-operator-watched created
-clusterrole.rbac.authorization.k8s.io/strimzi-cluster-operator-leader-election created
-clusterrolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator created
-customresourcedefinition.apiextensions.k8s.io/kafkamirrormaker2s.kafka.strimzi.io created
-customresourcedefinition.apiextensions.k8s.io/kafkas.kafka.strimzi.io created
-customresourcedefinition.apiextensions.k8s.io/kafkarebalances.kafka.strimzi.io created
-customresourcedefinition.apiextensions.k8s.io/kafkatopics.kafka.strimzi.io created
-clusterrolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator-kafka-broker-delegation created
-configmap/strimzi-cluster-operator created
-customresourcedefinition.apiextensions.k8s.io/kafkausers.kafka.strimzi.io created
-
-kubectl get pod -n kafka --watch
-kubectl logs deployment/strimzi-cluster-operator -n kafka -f
+kubectl get pod -n $KAFKA_NS --watch
+kubectl logs deployment/strimzi-cluster-operator -n $KAFKA_NS -f
 
 ## Create Cluster
 KAFKA_NS=kafka
@@ -449,11 +450,41 @@ kubectl -n kafka run kafka-consumer -ti --image=quay.io/strimzi/kafka:0.34.0-kaf
 kubectl port-forward svc/my-cluster-kafka-plain-bootstrap -n kafka 9092:9092
 
 
+## Install Kafka UI: https://docs.kafka-ui.provectus.io/configuration/helm-charts/quick-start
+helm repo add kafka-ui https://provectus.github.io/kafka-ui
+helm repo update kafka-ui
+
+cat << EOF  > values.yml  
+yamlApplicationConfig:
+  kafka:
+    clusters:
+      - name: yaml
+        bootstrapServers: my-cluster-kafka-plain-bootstrap:9092
+  auth:
+    type: disabled
+  management:
+    health:
+      ldap:
+        enabled: false
+EOF
+
+KAFKA_NS=kafka
+## kafka-ui versions: https://provectus.github.io/kafka-ui/index.yaml
+helm install kafka-ui -n $KAFKA_NS kafka-ui/kafka-ui -f values.yml --version=v0.7.0
+
+kubectl port-forward svc/kafka-ui -n kafka 8082:80
+curl localhost:8082
+
+
 ## Deleting your Apache Kafka cluster
-kubectl -n kafka delete $(kubectl get strimzi -o name -n kafka)
-kubectl -n kafka delete -f 'https://strimzi.io/install/latest?namespace=kafka'
-
-
+KAFKA_NS=kafka
+kubectl delete kafka -n $KAFKA_NS --all
+helm delete -n $KAFKA_NS kafka-ui
+kubectl -n $KAFKA_NS delete $(kubectl get strimzi -o name -n kafka)
+kubectl delete deployment -n $KAFKA_NS --all
+kubectl delete service -n $KAFKA_NS --all
+kubectl delete cm -n $KAFKA_NS --all
+kubectl delete rolebinding -n $KAFKA_NS --all
 ```
 
 
