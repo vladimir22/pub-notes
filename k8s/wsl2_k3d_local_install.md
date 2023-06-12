@@ -487,6 +487,36 @@ kubectl delete cm -n $KAFKA_NS --all
 kubectl delete rolebinding -n $KAFKA_NS --all
 ```
 
+### - Install Redis
+```sh
+## Install Redis https://github.com/bitnami/charts/blob/main/bitnami/redis/README.md#introduction
+kubectl create ns redis
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm install my-redis bitnami/redis -n redis
+kubectl get pods
+
+## Run Redis CLI: https://redis.io/docs/getting-started/
+export REDIS_PASSWORD=$(kubectl get secret --namespace redis my-redis -o jsonpath="{.data.redis-password}" | base64 -d)
+#kubectl run --namespace redis redis-client --restart='Never'  --env REDIS_PASSWORD=$REDIS_PASSWORD  --image docker.io/bitnami/redis:7.0.11-debian-11-r12 --command -- sleep infinity
+kubectl exec --tty -i redis-client --namespace redis -- bash
+
+REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli -h my-redis-master
+#REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli -h my-redis-replicas
+
+my-redis-master:6379> ping
+PONG
+my-redis-master:6379> set my-key my-mavue
+OK
+my-redis-master:6379> get my-key
+"my-mavue"
+my-redis-master:6379> set my-key my-mavue2
+OK
+my-redis-master:6379> get my-key
+"my-mavue2"
+
+kubectl port-forward --namespace redis svc/my-redis-master 6379:6379 &
+REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli -h 127.0.0.1 -p 6379
+```
 
 ### - Install MySQL
 #### - Install [bitnami/mysql](https://bitnami.com/stack/mysql/helm) helm chart
