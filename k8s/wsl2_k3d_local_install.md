@@ -82,6 +82,13 @@ kube-system   traefik-55fdc6d984-59mq7                  1/1     Running     0   
 \
 ## Addons
 The next steps are optional, use these steps if you want to: 
+```sh
+## Fix Docker Error: An attempt was made to access a socket in a way forbidden by its access permissions: ## https://asheroto.medium.com/docker-error-an-attempt-was-made-to-access-a-socket-in-a-way-forbidden-by-its-access-permissions-15a444ab217b
+net stop winnat
+netsh int ipv4 set dynamic tcp start=49152 num=16384
+netsh int ipv6 set dynamic tcp start=49152 num=16384
+net start winnat
+```
 
 
 ### - Install cert-manager
