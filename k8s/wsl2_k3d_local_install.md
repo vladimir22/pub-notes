@@ -45,6 +45,7 @@ kubectl version --client
 
 #### - Instal [Helm](https://helm.sh/docs/intro/install)
 ```sh
+## https://github.com/helm/helm/releases
 curl -O https://get.helm.sh/helm-v3.7.1-linux-amd64.tar.gz
 tar -zxvf helm-v3.7.1-linux-amd64.tar.gz
 ls linux-amd64
@@ -81,6 +82,13 @@ kube-system   traefik-55fdc6d984-59mq7                  1/1     Running     0   
 \
 ## Addons
 The next steps are optional, use these steps if you want to: 
+```sh
+## Fix Docker Error: An attempt was made to access a socket in a way forbidden by its access permissions: ## https://asheroto.medium.com/docker-error-an-attempt-was-made-to-access-a-socket-in-a-way-forbidden-by-its-access-permissions-15a444ab217b
+net stop winnat
+netsh int ipv4 set dynamic tcp start=49152 num=16384
+netsh int ipv6 set dynamic tcp start=49152 num=16384
+net start winnat
+```
 
 
 ### - Install cert-manager
@@ -344,6 +352,327 @@ kubectl delete cm -n $ECHOSERVER_NS echoserver
 kubectl delete secrets -n $ECHOSERVER_NS demo-secret1 demo-secret2
 ```
 
+
+### - Install Strimzi Kafka
+
+```sh
+## Install Strimzi Kafka: https://strimzi.io/quickstarts/
+KAFKA_NS=kafka
+kubectl create namespace $KAFKA_NS
+## https://github.com/strimzi/strimzi-kafka-operator/releases/download/0.34.0/strimzi-cluster-operator-0.34.0.yaml
+kubectl create -f 'https://strimzi.io/install/latest?namespace=kafka' -n kafka
+...
+      deployment.apps/strimzi-cluster-operator created
+      clusterrole.rbac.authorization.k8s.io/strimzi-kafka-broker created
+      rolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator-leader-election created
+      serviceaccount/strimzi-cluster-operator created
+      customresourcedefinition.apiextensions.k8s.io/kafkaconnects.kafka.strimzi.io created
+      clusterrole.rbac.authorization.k8s.io/strimzi-cluster-operator-namespaced created
+      rolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator-watched created
+      customresourcedefinition.apiextensions.k8s.io/kafkaconnectors.kafka.strimzi.io created
+      customresourcedefinition.apiextensions.k8s.io/kafkabridges.kafka.strimzi.io created
+      customresourcedefinition.apiextensions.k8s.io/kafkamirrormakers.kafka.strimzi.io created
+      clusterrole.rbac.authorization.k8s.io/strimzi-entity-operator created
+      clusterrole.rbac.authorization.k8s.io/strimzi-cluster-operator-global created
+      clusterrole.rbac.authorization.k8s.io/strimzi-kafka-client created
+      clusterrolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator-kafka-client-delegation created
+      customresourcedefinition.apiextensions.k8s.io/strimzipodsets.core.strimzi.io created
+      rolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator created
+      rolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator-entity-operator-delegation created
+      clusterrole.rbac.authorization.k8s.io/strimzi-cluster-operator-watched created
+      clusterrole.rbac.authorization.k8s.io/strimzi-cluster-operator-leader-election created
+      clusterrolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator created
+      customresourcedefinition.apiextensions.k8s.io/kafkamirrormaker2s.kafka.strimzi.io created
+      customresourcedefinition.apiextensions.k8s.io/kafkas.kafka.strimzi.io created
+      customresourcedefinition.apiextensions.k8s.io/kafkarebalances.kafka.strimzi.io created
+      customresourcedefinition.apiextensions.k8s.io/kafkatopics.kafka.strimzi.io created
+      clusterrolebinding.rbac.authorization.k8s.io/strimzi-cluster-operator-kafka-broker-delegation created
+      configmap/strimzi-cluster-operator created
+      customresourcedefinition.apiextensions.k8s.io/kafkausers.kafka.strimzi.io created
+
+kubectl get pod -n $KAFKA_NS --watch
+kubectl logs deployment/strimzi-cluster-operator -n $KAFKA_NS -f
+
+## Create Cluster
+KAFKA_NS=kafka
+kubectl apply -n $KAFKA_NS -f - <<EOF
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: my-cluster
+spec:
+  kafka:
+    version: 3.4.0
+    replicas: 1
+    listeners:
+      - name: plain
+        port: 9092
+        type: cluster-ip
+        tls: false
+        configuration:
+          brokers:
+          - broker: 0
+            advertisedHost: my-cluster-kafka-plain-0.kafka.svc
+            advertisedPort: 9092
+      #- name: tls
+      #  port: 9093
+      #  type: cluster-ip
+      #  tls: true
+      #  authentication:
+      #    type: tls
+    config:
+      offsets.topic.replication.factor: 1
+      transaction.state.log.replication.factor: 1
+      transaction.state.log.min.isr: 1
+      default.replication.factor: 1
+      min.insync.replicas: 1
+      inter.broker.protocol.version: "3.4"
+    storage:
+      type: jbod
+      volumes:
+      - id: 0
+        type: persistent-claim
+        size: 1Gi
+        deleteClaim: false
+  zookeeper:
+    replicas: 1
+    storage:
+      type: persistent-claim
+      size: 1Gi
+      deleteClaim: false
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}
+EOF
+
+
+## Create producer
+kubectl -n kafka run kafka-producer -ti --image=quay.io/strimzi/kafka:0.34.0-kafka-3.4.0 --rm=true --restart=Never -- bin/kafka-console-producer.sh --bootstrap-server my-cluster-kafka-plain-bootstrap:9092 --topic my-topic2
+## Create consumer
+kubectl -n kafka run kafka-consumer -ti --image=quay.io/strimzi/kafka:0.34.0-kafka-3.4.0 --rm=true --restart=Never -- bin/kafka-console-consumer.sh --bootstrap-server my-cluster-kafka-plain-bootstrap:9092 --topic my-topic2 --from-beginning
+
+
+## Set up Local Access
+#Add hosts: C:\Windows\System32\drivers\etc\hosts  127.0.0.1 my-cluster-kafka-plain-0.kafka.svc
+kubectl port-forward svc/my-cluster-kafka-plain-bootstrap -n kafka 9092:9092
+
+
+## Install Kafka UI: https://docs.kafka-ui.provectus.io/configuration/helm-charts/quick-start
+helm repo add kafka-ui https://provectus.github.io/kafka-ui
+helm repo update kafka-ui
+
+cat << EOF  > values.yml  
+yamlApplicationConfig:
+  kafka:
+    clusters:
+      - name: yaml
+        bootstrapServers: my-cluster-kafka-plain-bootstrap:9092
+  auth:
+    type: disabled
+  management:
+    health:
+      ldap:
+        enabled: false
+EOF
+
+KAFKA_NS=kafka
+## kafka-ui versions: https://provectus.github.io/kafka-ui/index.yaml
+helm install kafka-ui -n $KAFKA_NS kafka-ui/kafka-ui -f values.yml --version=v0.7.0
+
+kubectl port-forward svc/kafka-ui -n kafka 8082:80
+curl localhost:8082
+
+
+## Deleting your Apache Kafka cluster
+KAFKA_NS=kafka
+kubectl delete kafka -n $KAFKA_NS --all
+helm delete -n $KAFKA_NS kafka-ui
+kubectl -n $KAFKA_NS delete $(kubectl get strimzi -o name -n kafka)
+kubectl delete deployment -n $KAFKA_NS --all
+kubectl delete service -n $KAFKA_NS --all
+kubectl delete cm -n $KAFKA_NS --all
+kubectl delete rolebinding -n $KAFKA_NS --all
+```
+
+### - Install Redis
+```sh
+## Install Redis https://github.com/bitnami/charts/blob/main/bitnami/redis/README.md#introduction
+kubectl create ns redis
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm install my-redis bitnami/redis -n redis
+kubectl get pods
+
+## Run Redis CLI: https://redis.io/docs/getting-started/
+export REDIS_PASSWORD=$(kubectl get secret --namespace redis my-redis -o jsonpath="{.data.redis-password}" | base64 -d)
+#kubectl run --namespace redis redis-client --restart='Never'  --env REDIS_PASSWORD=$REDIS_PASSWORD  --image docker.io/bitnami/redis:7.0.11-debian-11-r12 --command -- sleep infinity
+kubectl exec --tty -i redis-client --namespace redis -- bash
+
+REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli -h my-redis-master
+#REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli -h my-redis-replicas
+
+my-redis-master:6379> ping
+PONG
+my-redis-master:6379> set my-key my-mavue
+OK
+my-redis-master:6379> get my-key
+"my-mavue"
+my-redis-master:6379> set my-key my-mavue2
+OK
+my-redis-master:6379> get my-key
+"my-mavue2"
+
+kubectl port-forward --namespace redis svc/my-redis-master 6379:6379 &
+REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli -h 127.0.0.1 -p 6379
+```
+
+### - Install MySQL
+#### - Install [bitnami/mysql](https://bitnami.com/stack/mysql/helm) helm chart
+```sh
+## Install MySQL helm chart: https://github.com/bitnami/charts/blob/main/bitnami/mysql/values.yaml#L112
+MYSQL_NS=db
+kubectl create ns $MYSQL_NS
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm install db bitnami/mysql -n $MYSQL_NS --set auth.rootPassword=root
+
+## Install db client:
+MYSQL_ROOT_PASSWORD=$(kubectl get secret --namespace db db-mysql -o jsonpath="{.data.mysql-root-password}" | base64 -d)
+echo $MYSQL_ROOT_PASSWORD
+kubectl delete pod db-mysql-client -n db
+kubectl run db-mysql-client --rm --tty -i --restart='Never' --image  docker.io/bitnami/mysql:8.0.33-debian-11-r0 --namespace db --env MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD --command -- bash
+mysql -h db-mysql.db.svc.cluster.local -uroot -p"$MYSQL_ROOT_PASSWORD"
+
+## Create DB: https://www.javatpoint.com/mysql-create-database
+CREATE DATABASE testdb; 
+SHOW CREATE DATABASE testdb;   
+SHOW DATABASES; 
+USE testdb;   
+
+## Create tables: https://www.javatpoint.com/mysql-create-table
+CREATE TABLE Clients(
+    id int NOT NULL AUTO_INCREMENT,  
+    name varchar(45) NOT NULL,  
+    description varchar(45) NOT NULL,  
+    PRIMARY KEY (id)  
+); 
+
+CREATE TABLE Drivers(
+    id int NOT NULL AUTO_INCREMENT,  
+    name varchar(45) NOT NULL,  
+    description varchar(45) NOT NULL,  
+    PRIMARY KEY (id)  
+);
+
+CREATE TABLE Cars(
+    id int NOT NULL AUTO_INCREMENT,  
+    name varchar(45) NOT NULL,  
+    description varchar(45) NOT NULL,
+    driver_id int NOT NULL,
+    PRIMARY KEY (id)  
+); 
+
+CREATE TABLE Orders(
+    id int NOT NULL AUTO_INCREMENT,  
+    name varchar(45) NOT NULL,
+    description varchar(45) NOT NULL,
+    client_id int NOT NULL,
+    driver_id int NOT NULL,
+    PRIMARY KEY (id)  
+); 
+
+INSERT INTO Clients (id, name, description)     
+VALUES 
+(1,'Client1', 'Test Client1'),     
+(2,'Client2', 'Test Client2'),     
+(3,'Client3', 'Test Client3'),  
+(4,'Client4', 'Test Client4'),    
+(5,'Client5', 'Test Client5'),
+(6,'Client6', 'Test Client6'),
+(7,'Client7', 'Test Client7'),
+(8,'Client8', 'Test Client8'),
+(9,'Client9', 'Test Client9');
+
+INSERT INTO Drivers (id, name, description)     
+VALUES 
+(1,'Driver1', 'Test Driver1'),     
+(2,'Driver2', 'Test Driver2'),     
+(3,'Driver3', 'Test Driver3'),  
+(4,'Driver4', 'Test Driver4'),    
+(5,'Driver5', 'Test Driver5'),
+(6,'Driver6', 'Test Driver6'),
+(7,'Driver7', 'Test Driver7'),
+(8,'Driver8', 'Test Driver8'),
+(9,'Driver9', 'Test Driver9'); 
+
+INSERT INTO Cars (id, name, description, driver_id)     
+VALUES 
+(1,'Car1', 'Test Car1', 1),     
+(2,'Car2', 'Test Car2', 2),     
+(3,'Car3', 'Test Car3', 3),  
+(4,'Car4', 'Test Car4', 4),    
+(5,'Car5', 'Test Car5', 5),
+(6,'Car6', 'Test Car6', 6),
+(7,'Car7', 'Test Car7', 7),
+(8,'Car8', 'Test Car8', 8),
+(9,'Car9', 'Test Car9', 9); 
+
+INSERT INTO Orders (id, name, description, client_id, driver_id)     
+VALUES 
+(1,'Order1', 'Test Order1', 1, 1),     
+(2,'Order2', 'Test Order2', 2, 2),     
+(3,'Order3', 'Test Order3', 3, 3),  
+(4,'Order4', 'Test Order4', 4, 4),    
+(5,'Order5', 'Test Order5', 5, 5),
+(6,'Order6', 'Test Order6', 6, 6),
+(7,'Order7', 'Test Order7', 7, 7),
+(8,'Order8', 'Test Order8', 8, 8),
+(9,'Order9', 'Test Order9', 9, 9); 
+```
+
+#### - Play with [EXPLAIN](https://habr.com/ru/companies/citymobil/articles/545004) command
+```sh
+EXPLAIN SELECT Clients.id, Clients.name, Drivers.name, Orders.name
+        FROM Clients
+        JOIN Orders ON Orders.client_id = Clients.id
+        JOIN Drivers ON Orders.driver_id = Drivers.id;
++----+-------------+---------+------------+--------+---------------+---------+---------+-------------------------+------+----------+-------+
+| id | select_type | table   | partitions | type   | possible_keys | key     | key_len | ref                     | rows | filtered | Extra |
++----+-------------+---------+------------+--------+---------------+---------+---------+-------------------------+------+----------+-------+
+|  1 | SIMPLE      | Orders  | NULL       | ALL    | NULL          | NULL    | NULL    | NULL                    |    9 |   100.00 | NULL  |
+|  1 | SIMPLE      | Clients | NULL       | eq_ref | PRIMARY       | PRIMARY | 4       | testdb.Orders.client_id |    1 |   100.00 | NULL  |
+|  1 | SIMPLE      | Drivers | NULL       | eq_ref | PRIMARY       | PRIMARY | 4       | testdb.Orders.driver_id |    1 |   100.00 | NULL  |
++----+-------------+---------+------------+--------+---------------+---------+---------+-------------------------+------+----------+-------+
+3 rows in set, 1 warning (0.01 sec)
+
+EXPLAIN SELECT id, (SELECT 1 FROM Orders WHERE client_id = t1.id LIMIT 1)
+       FROM (SELECT id FROM Drivers LIMIT 5) AS t1
+       UNION
+       SELECT driver_id, (SELECT @var1 FROM Cars LIMIT 1)
+       FROM (
+           SELECT driver_id, (SELECT 1 FROM Clients)
+           FROM Orders LIMIT 5
+       ) AS t2;
++----+----------------------+------------+------------+-------+---------------+---------+---------+------+------+----------+-----------------+
+| id | select_type          | table      | partitions | type  | possible_keys | key     | key_len | ref  | rows | filtered | Extra           |
++----+----------------------+------------+------------+-------+---------------+---------+---------+------+------+----------+-----------------+
+|  1 | PRIMARY              | <derived3> | NULL       | ALL   | NULL          | NULL    | NULL    | NULL |    5 |   100.00 | NULL            |
+|  3 | DERIVED              | Drivers    | NULL       | index | NULL          | PRIMARY | 4       | NULL |    9 |   100.00 | Using index     |
+|  2 | DEPENDENT SUBQUERY   | Orders     | NULL       | ALL   | NULL          | NULL    | NULL    | NULL |    9 |    11.11 | Using where     |
+|  4 | UNION                | <derived6> | NULL       | ALL   | NULL          | NULL    | NULL    | NULL |    5 |   100.00 | NULL            |
+|  6 | DERIVED              | Orders     | NULL       | ALL   | NULL          | NULL    | NULL    | NULL |    9 |   100.00 | NULL            |
+|  7 | SUBQUERY             | Clients    | NULL       | index | NULL          | PRIMARY | 4       | NULL |    9 |   100.00 | Using index     |
+|  5 | UNCACHEABLE SUBQUERY | Cars       | NULL       | index | NULL          | PRIMARY | 4       | NULL |    9 |   100.00 | Using index     |
+|  8 | UNION RESULT         | <union1,4> | NULL       | ALL   | NULL          | NULL    | NULL    | NULL | NULL |     NULL | Using temporary |
++----+----------------------+------------+------------+-------+---------------+---------+---------+------+------+----------+-----------------+
+8 rows in set, 2 warnings (0.00 sec) 
+
+
+## Delete MySQL:
+kubectl delete pod db-mysql-client -n db
+helm delete db -n db
+
+
+```
+
 ### - Install Postgres Operator
 *Theory*:
 - [Spilo](https://github.com/zalando/spilo) is a Docker image that provides PostgreSQL HA and Patroni bundled together:
@@ -367,7 +696,7 @@ kubectl delete secrets -n $ECHOSERVER_NS demo-secret1 demo-secret2
 #### - Install [Zalando](https://github.com/zalando/postgres-operator) postgres-operator
 ```sh
 git clone https://github.com/zalando/postgres-operator.git
-cd /mnt/d/Project/github/zalando/postgres-operator/charts/postgres-operator
+cd ./postgres-operator/charts/postgres-operator
 kubectl create ns pgo
 helm install pgo . -n pgo
 ```
@@ -1059,7 +1388,7 @@ SELECT * from public.test;
 
 
 
-### - Install [conjur-oss](https://kloeckner-i.github.io/db-operator)
+### - Install `conjur-oss`
 ```sh
 
 CONJUR_NS=conjur
@@ -1133,13 +1462,15 @@ API key for admin: 30pgvre3172ks7zqj13q11zm2rn16m5zq423rkb7j1r67nqn6azrsz
 ```
 
 
-### - Install [db-operator](https://kloeckner-i.github.io/db-operator)
-TODO: wait for `v.1.5.0` helm version [here](https://kloeckner-i.github.io/db-operator/index.yaml) which contains my [PR-130](https://github.com/kloeckner-i/db-operator/pull/130): 
+### - Install [db-operator](https://kloeckner-i.github.io/db-operator#quickstart)
 ```sh
-git clone https://github.com/zalando/postgres-operator.git
-cd /mnt/d/Project/github/kloeckner-i/db-operator/charts/db-operator 
-kubectl create ns db-oper
-helm install db-oper . -n db-oper
+VERSION=1.5.1
+NS=db-oper
+## Available versions: https://kloeckner-i.github.io/charts/index.yaml
+helm repo add kloeckneri https://kloeckner-i.github.io/charts/
+helm repo update kloeckneri
+kubectl create ns $NS
+helm install dbo kloeckneri/db-operator -n $NS --version $VERSION
 ```
 
 
@@ -1305,10 +1636,9 @@ velero restore create --from-backup $BACKUP_NAME --include-namespaces default
 ```
 
 
-### - [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#installing-and-upgrading-ansible) notes
-
-
-- Installing [pip](https://www.educative.io/answers/installing-pip3-in-ubuntu)
+### - Tips how to install [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#installing-and-upgrading-ansible)
+Steps below might be helpful in ansible installation
+#### - Install [pip](https://www.educative.io/answers/installing-pip3-in-ubuntu)
 ```sh
 python3 --version
 Python 3.8.2
@@ -1319,8 +1649,7 @@ sudo apt-get -y install python3-pip
 pip3 --version
 pip 20.0.2 from /usr/lib/python3/dist-packages/pip (python 3.8)
 ```
-
-- Install [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#installing-and-upgrading-ansible)
+#### - Install [ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#installing-and-upgrading-ansible)
 ```sh
 python3 -m pip -V
 pip 20.0.2 from /usr/lib/python3/dist-packages/pip (python 3.8)
@@ -1342,7 +1671,6 @@ ansible [core 2.13.5]
   python version = 3.8.10 (default, Jun 22 2022, 20:18:18) [GCC 9.4.0]
   jinja version = 3.1.2
   libyaml = True
-
 ```
 
 - Install plugins
@@ -1351,8 +1679,6 @@ ansible [core 2.13.5]
 ansible-galaxy collection install kubernetes.core
 pip install kubernetes
 ```
-
-- Write Ansible [Playbooks](https://www.digitalocean.com/community/tutorial_series/how-to-write-ansible-playbooks) and set up [inventory](https://www.digitalocean.com/community/tutorials/how-to-set-up-ansible-inventories) files
 
 ```sh
 
@@ -1393,13 +1719,241 @@ EOF
 ```
 
 
-- Run Playbook
+#### - Run ansible playbook
 ```sh
 export ANSIBLE_STDOUT_CALLBACK=yaml
 ansible-playbook -i inventory ./playbooks/hello-world.yaml
 ```
 
 
+### - Elasticsearch
+#### - Open Kibana cosole
+Kibana provides very convenient "dev_tools console" to send curl requests from the browser. 
+`https://ingress.local/monitoring/kibana/app/dev_tools#/console`
 
+#### - Run CAT commands
+[Compact and aligned text (cat)](https://www.elastic.co/guide/en/elasticsearch/reference/current/cat.html) requests provide convenient readable response.
+```sh
+GET _cat
+=^.^=
+/_cat/shards
+/_cat/nodes
+/_cat/indices
+...
+
+GET _cat/nodes
+10.42.2.207 75 100 11 2.19 3.33 4.05 dr - logging-es-data-hot-1
+10.42.0.57  34  87  0 0.93 0.89 0.82 mr * logging-es-master-0
+10.42.1.246 36  88  1 0.37 0.68 0.73 ir - logging-es-client-0
+10.42.1.237 41 100 12 0.37 0.68 0.73 dr - logging-es-data-hot-0
+10.42.0.58  70  91  1 0.93 0.89 0.82 ir - logging-es-client-1
+10.42.4.152 57  89  4 0.93 0.71 0.49 mr - logging-es-master-1
+
+GET _cat/shards
+.ds-logs-2022.11.23-000014                                    0 p STARTED 1133894 676.4mb 10.42.2.207 logging-es-data-hot-1
+.ds-logs-2022.11.23-000014                                    0 r STARTED 1133892 676.3mb 10.42.1.237 logging-es-data-hot-0
+.ds-logs-2022.11.23-000014                                    1 r STARTED 1134714     1gb 10.42.2.207 logging-es-data-hot-1
+.ds-logs-2022.11.23-000014                                    1 p STARTED 1134707 678.3mb 10.42.1.237 logging-es-data-hot-0
+.ds-logs-2022.11.23-000014                                    2 p STARTED 1134399 676.3mb 10.42.2.207 logging-es-data-hot-1
+.ds-logs-2022.11.23-000014                                    2 r STARTED 1134403 867.8mb 10.42.1.237 logging-es-data-hot-0
+...
+
+GET _cat/indices
+green open .ds-logs-2022.11.23-000014 h40SAB7kSv2i9rMcc5cCIw 3 1 3403000 0 4.5gb 1.9gb
+```
+
+#### - Update, backup, delete and restore ECK cluster
+Demo steps below show how to create index, document, snapshot(backup) and after that delete and restore ECK cluster.  
+Copy-paste this script into "Kibana dev_tools console" and run these requests step-by-step
+```sh
+## Create index: https://www.elastic.co/guide/en/elasticsearch/reference/current/indices.html
+PUT my_index
+{
+    "settings" : {
+        "number_of_shards" : "5"
+    }
+}
+GET my_index
+
+## View index by shards (will be 10 = 5 shards + 1 replica*5)
+GET _cat/shards
+## View shards for future any generated doc_id
+GET my_index/_search_shards?routing=hZYzqYQBttpEiOatifJM
+
+## Create document
+POST my_index/_doc
+{
+  "my_doc": "my_doc value"
+}
+## View 10 documents in the index
+GET my_index/_search
+## Update document
+POST my_index/_update/6mJrqoQBhZoEIv4Ss0qM
+{
+  "doc": {
+    "my_updated_field": "my_updated_field value"
+  }
+}
+GET my_index/_doc/6mJrqoQBhZoEIv4Ss0qM
+
+
+
+## ------ Backup: https://www.elastic.co/guide/en/elasticsearch/reference/current/snapshots-take-snapshot.html#manually-create-snapshot
+
+## View created repos
+GET _snapshot
+## Create snapshot
+PUT _snapshot/s3_repo/my_snapshot_1?wait_for_completion=true
+GET _snapshot/s3_repo/*?verbose=false
+
+
+
+## ------ Restore: https://www.elastic.co/guide/en/elasticsearch/reference/current/snapshots-restore-snapshot.html#restore-snapshot-prereqs
+
+## Ensure the cluster contains a matching index template
+GET _index_template/*?filter_path=index_templates.name,index_templates.index_template.index_patterns,index_templates.index_template.data_stream
+
+
+## --- Restore single index ---
+## Restore index under the same name
+DELETE my_index
+POST _snapshot/s3_repo/my_snapshot_1/_restore
+{
+  "indices": "my_index"
+}
+GET my_index/_search
+
+
+## --- Restore to renamed index ---
+POST _snapshot/minio_s3_repo/my_snapshot_1/_restore
+{
+  "indices": "my_index",
+  "rename_pattern": "(.+)",
+  "rename_replacement": "renamed-$1"
+}
+GET renamed-my_index/_search
+
+# Delete the original index
+DELETE my_index
+# Change index name
+POST _reindex
+{
+  "source": {
+    "index": "renamed-my_index"
+  },
+  "dest": {
+    "index": "my_index"
+  }
+}
+GET my_index/_search
+
+
+
+## --- Delete and Restore whole cluster ---
+## https://www.elastic.co/guide/en/elasticsearch/reference/current/snapshots-restore-snapshot.html#restore-entire-cluster
+
+## Cleanup cluster
+#Temporarily stop indexing and turn off the following features
+PUT _cluster/settings
+{
+  "persistent": {
+    "ingest.geoip.downloader.enabled": false
+  }
+}
+POST _ilm/stop
+POST _ml/set_upgrade_mode?enabled=true
+PUT _cluster/settings
+{
+  "persistent": {
+    "xpack.monitoring.collection.enabled": false
+  }
+}
+POST _watcher/_stop
+## This lets you delete data streams and indices using wildcards
+PUT _cluster/settings
+{
+  "persistent": {
+    "action.destructive_requires_name": false
+  }
+}
+
+## Disable fluent-bit ds
+#kubectl -n monitoring patch daemonset logcollector-fluent-bit -p '{"spec": {"template": {"spec": {"nodeSelector": {"non-existing-node": "true"}}}}}'
+
+
+GET _data_stream
+DELETE _data_stream/*?expand_wildcards=all
+GET _data_stream
+
+
+GET _cat/templates
+DELETE _index_template/logs-idx-template
+DELETE _index_template/.kibana-event-log-8.2.3-template
+GET _index_template
+
+
+GET _cat/indices
+DELETE my_index
+DELETE .kibana-event-log-8.2.3-template
+DELETE .kibana-event-log-8.2.3-000001
+GET _all
+
+
+## Restore cluster
+GET _cat/snapshots
+GET _snapshot/minio_s3_repo/*?verbose=false
+POST _snapshot/minio_s3_repo/my_snapshot_1/_restore
+{
+  "indices": "*",
+  "include_global_state": true
+}
+GET _cluster/health
+
+
+## View restored data
+GET _data_stream
+GET _cat/templates
+GET _cat/indices
+GET .ds-logs-2022.11.24-000001/_search
+GET my_index/_search
+
+
+## Enable fluent-bit ds
+#kubectl -n monitoring patch daemonset logcollector-fluent-bit --type json -p='[{"op": "remove", "path": "/spec/template/spec/nodeSelector/non-existing-node"}]'
+
+
+## Enable GeoIP database downloader
+PUT _cluster/settings
+{
+  "persistent": {
+    "ingest.geoip.downloader.enabled": true
+  }
+}
+## Start ILM
+GET _ilm/status
+POST _ilm/start
+## Start ML
+GET _ml/info
+POST _ml/set_upgrade_mode?enabled=false
+## Enable monitoring
+PUT _cluster/settings
+{
+  "persistent": {
+    "xpack.monitoring.collection.enabled": true
+  }
+}
+## Start watcher
+GET  _watcher/stats
+POST _watcher/_start
+## Disable wildcards in index names
+PUT _cluster/settings
+{
+  "persistent": {
+    "action.destructive_requires_name": null
+  }
+}
+
+GET _cluster/health
+```
 
 

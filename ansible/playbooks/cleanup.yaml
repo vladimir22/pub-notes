@@ -1,0 +1,58 @@
+---
+- name: "Cleanup Actions"
+  hosts: localhost
+  connection: local
+  vars:
+  - KUBECONFIG: ~/.kube/config
+  tasks:
+  - name: Print ENVs
+    debug:
+      msg: "KUBECONFIG: {{ KUBECONFIG }}"
+
+  - name: Set params
+    set_fact:
+      ns: "sa"
+
+
+  - name: "kubectl delete postgresql -n {{ns}} --all"
+    ## https://docs.ansible.com/ansible/latest/collections/ansible/builtin/shell_module.html#examples
+    ansible.builtin.shell: kubectl delete postgresql -n {{ns}} --all
+    register: cmd_out
+  # - name: Print cmd_out
+  #   debug:
+  #     msg: "cmd_out: {{ cmd_out }}"    
+
+
+  - name: "kubectl delete statefulset -n {{ns}} --all"
+    ## https://docs.ansible.com/ansible/latest/collections/ansible/builtin/shell_module.html#examples
+    ansible.builtin.shell: kubectl delete statefulset -n {{ns}} --all
+    register: cmd_out
+  # - name: Print cmd_out
+  #   debug:
+  #     msg: "cmd_out: {{ cmd_out }}"    
+
+
+  - name: "kubectl delete pvc -n {{ns}} --all"
+    ## https://docs.ansible.com/ansible/latest/collections/ansible/builtin/shell_module.html#examples
+    ansible.builtin.shell: kubectl delete pvc -n {{ns}} --all
+    register: cmd_out
+  # - name: Print cmd_out
+  #   debug:
+  #     msg: "cmd_out: {{ cmd_out }}"    
+
+
+  - name: "kubectl delete secret -n {{ns}} --all"
+    ## https://docs.ansible.com/ansible/latest/collections/ansible/builtin/shell_module.html#examples
+    ansible.builtin.shell: kubectl delete secret -n {{ns}} --all
+    register: cmd_out
+  # - name: Print cmd_out
+  #   debug:
+  #     msg: "cmd_out: {{ cmd_out }}"    
+
+  - name: "kubectl delete cm -n {{ns}} --all"
+    ## https://docs.ansible.com/ansible/latest/collections/ansible/builtin/shell_module.html#examples
+    ansible.builtin.shell: kubectl delete cm -n {{ns}} --all
+    register: cmd_out
+  # - name: Print cmd_out
+  #   debug:
+  #     msg: "cmd_out: {{ cmd_out }}"    

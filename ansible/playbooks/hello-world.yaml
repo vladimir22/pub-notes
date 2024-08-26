@@ -1,0 +1,23 @@
+---
+- name: "Playing hello-world.yaml"
+  hosts: localhost
+  connection: local
+  vars:
+  - KUBECONFIG: ~/.kube/config
+  tasks:
+  - name: Print ENVs
+    debug:
+      msg: "KUBECONFIG: {{ KUBECONFIG }}"
+
+  - name: Search for all Pods
+    kubernetes.core.k8s_info:
+      kind: Pod
+      #label_selectors:
+      #  - app = web
+      #  - tier in (dev, test)
+    register: k8s_out
+    
+  - name: Print k8s_out
+    debug:
+      msg: "k8s_out: {{ k8s_out.resources }}"      
+
