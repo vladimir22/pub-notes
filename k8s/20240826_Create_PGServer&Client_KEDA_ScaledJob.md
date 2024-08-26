@@ -1,5 +1,5 @@
-# Create PG Server, KEDA ScaledJob, PG Client
-
+# Create Test PG Server, PG Client, KEDA ScaledJob
+Script below demonstrates basic usage of KEDA [ScaledJob](https://keda.sh/docs/2.15/reference/scaledjob-spec/) based on [postgresql](https://keda.sh/docs/2.15/scalers/postgresql) trigger.
 
 #### Create PG Server
 ```yaml
