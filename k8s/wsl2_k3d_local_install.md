@@ -376,69 +376,13 @@ helm install pgo . -n pgo
 #### - Create ConfigMap with [Custom ENVs for all Cluster PODs](https://github.com/zalando/postgres-operator/blob/master/docs/administrator.md#custom-pod-environment-variables) by default
 ```yaml
 
-
-## Optinonal:  Create ConfigMap with default ENVs which will be added into PG Statefulset
-kubectl apply -n pgo -f - <<EOF
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: postgres-pod-config
-data:
-  ## --- Backup Settings ---
-  AWS_ENDPOINT: http://storage-minio.s3.svc.cluster.local:9000 #
-  AWS_ACCESS_KEY_ID: minio
-  AWS_SECRET_ACCESS_KEY: minio123
-  AWS_REGION: minio
-  AWS_S3_FORCE_PATH_STYLE: "true" # needed for MinIO ONLY
-
-  WAL_S3_BUCKET: foundation-pf
-  WALE_S3_BUCKET: foundation-pf
-  WAL_BUCKET_SCOPE_PREFIX: ""
-  WAL_BUCKET_SCOPE_SUFFIX: ""
-
-  WALG_DISABLE_S3_SSE: "true"
-
-  USE_WALG_BACKUP: "true"
-  USE_WALG_RESTORE: "true"
-
-  #WALE_S3_ENDPOINT: http://storage-minio.s3.svc.cluster.local:9000
-  #WALE_S3_PREFIX: s3://foundation-pf/spilo/postgres-db-pg-cluster
-  #WALG_S3_ENDPOINT: http://storage-minio.s3.svc.cluster.local:9000
-  #WALG_S3_PREFIX: s3://foundation-pf/spilo/postgres-db-pg-cluster
-
-  BACKUP_SCHEDULE: '*/3  * * * *' ## Every 3 minutes
-  BACKUP_NUM_TO_RETAIN: "5"
-
-  ## --- Clone Settings ---
-  ## Clone creds can be specified in the "postgresql" object
-  #CLONE_AWS_ENDPOINT: http://storage-minio.s3.svc.cluster.local:9000  
-  #CLONE_AWS_ACCESS_KEY_ID: minio
-  #CLONE_AWS_SECRET_ACCESS_KEY: minio123
-  
-  CLONE_AWS_REGION: minio
-  CLONE_WAL_S3_BUCKET: "foundation-pf"
-  CLONE_WAL_BUCKET_SCOPE_SUFFIX: ""
-  CLONE_WAL_BUCKET_SCOPE_PREFIX: ""
-  CLONE_AWS_S3_FORCE_PATH_STYLE: "true" # needed for MinIO
-  CLONE_METHOD: CLONE_WITH_WALE
-  #CLONE_WITH_WALE: "true"  ## Enable cloning for every new cluster by default !!!
-  
-  ## Other optional clone params
-  #CLONE_WALE_ENV_DIR: "/tmp/wal-g"
-  #CLONE_USE_WALG_RESTORE: "true"
-  #CLONE_SCOPE: postgres-db-pg-cluster  
-  ##CLONE_WAL_BUCKET_SCOPE_SUFFIX: "/889918f8-0c89-455d-b0bb-8cf0b799c011"
-  ##CLONE_TARGET_TIME: "2025-12-19T12:40:33+00:00"
-EOF
-
 ## Link ConfigMap inside the OperatorConfiguration
 kubectl edit OperatorConfiguration -n pgo pgo-postgres-operator
 ...
 configuration:
   kubernetes:
     ## Do NOT specify namespace if ConfigMap must be taken from the namespace where 'postgresql' is created
-    #pod_environment_configmap: postgres-pod-config   
-    pod_environment_configmap: pgo/postgres-pod-config
+    pod_environment_configmap: custom-config
 ...
 
 ## Restart Zalando Operator
@@ -462,6 +406,73 @@ klo -n $POD_NS $POD_NAME
 SITEA_NS=sa
 kubectl create ns $SITEA_NS
 SITEA_NAME=postgres-db-site-a
+
+
+## Optinonal:  Create ConfigMap with default ENVs which will be added into PG Statefulset
+kubectl apply -n sa -f - <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custom-config
+data:
+
+  ## https://thedatabaseme.de/2022/03/26/backup-to-s3-configure-zalando-postgres-operator-backup-with-wal-g/
+
+  ## --- Common S3 Settings ---
+  AWS_ENDPOINT: http://storage-minio.s3.svc.cluster.local:9000 #
+  AWS_ACCESS_KEY_ID: minio
+  AWS_SECRET_ACCESS_KEY: minio123
+  AWS_REGION: minio
+  AWS_S3_FORCE_PATH_STYLE: "true" # needed for MinIO ONLY
+
+
+  ## --- Backup Settings ---
+  WAL_S3_BUCKET: foundation-pf
+  WAL_BUCKET_SCOPE_PREFIX: "" ## Do NOT use 'clone.uid' parameter for PG Clone
+  WAL_BUCKET_SCOPE_SUFFIX: ""
+
+  WALE_S3_BUCKET: foundation-pf
+
+  WALG_DISABLE_S3_SSE: "true" ## Disables the backup encryption
+
+  USE_WALG_BACKUP: "true"
+  USE_WALG_RESTORE: "true"
+
+  #WALE_S3_ENDPOINT: http://storage-minio.s3.svc.cluster.local:9000
+  #WALE_S3_PREFIX: s3://foundation-pf/spilo/postgres-db-pg-cluster
+  #WALG_S3_ENDPOINT: http://storage-minio.s3.svc.cluster.local:9000
+  #WALG_S3_PREFIX: s3://foundation-pf/spilo/postgres-db-pg-cluster
+
+  BACKUP_SCHEDULE: '*/10  * * * *' ## Every 10 minutes
+  #BACKUP_NUM_TO_RETAIN: "5"
+
+  ## --- Clone Settings ---
+  CLONE_USE_WALG_RESTORE: "true"
+  
+  ## Clone creds can be specified in the "postgresql" object
+  #CLONE_AWS_ENDPOINT: http://storage-minio.s3.svc.cluster.local:9000  
+  #CLONE_AWS_ACCESS_KEY_ID: minio
+  #CLONE_AWS_SECRET_ACCESS_KEY: minio123
+  
+  #CLONE_AWS_REGION: minio
+  #CLONE_WAL_S3_BUCKET: "foundation-pf"
+  #CLONE_WAL_BUCKET_SCOPE_SUFFIX: ""
+  #CLONE_WAL_BUCKET_SCOPE_PREFIX: ""
+  #CLONE_AWS_S3_FORCE_PATH_STYLE: "true" # needed for MinIO
+  #CLONE_METHOD: CLONE_WITH_WALE
+  #CLONE_WITH_WALE: "true"  ## Enable cloning for every new cluster by default !!!
+  
+  ## Other optional clone params
+  #CLONE_WALE_ENV_DIR: "/tmp/wal-g"
+  
+  #CLONE_SCOPE: postgres-db-pg-cluster  
+  ##CLONE_WAL_BUCKET_SCOPE_SUFFIX: "/889918f8-0c89-455d-b0bb-8cf0b799c011"
+  ##CLONE_TARGET_TIME: "2025-12-19T12:40:33+00:00"
+EOF
+
+
+
+
 
 ## Create secrets with pre-defined passwords
 cat <<EOF | kubectl apply -f -
@@ -592,7 +603,6 @@ CREATE TABLE test ( \
     added timestamp default NOW() \
 );"
 
-"
 
 ## SiteA: Insert into table
 kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- psql -d $DB_NAME -U $DB_USERNAME \
@@ -605,6 +615,19 @@ kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- psql -d $DB_NAME -U $DB_USERNAME 
 ## SiteA(Replica): Select from table
 kubectl exec -it -n $SITEA_NS $SITEA_NAME-1 -- psql -d $DB_NAME -U $DB_USERNAME \
 -c " SELECT * FROM test; "
+
+
+## View backups: https://github.com/wal-g/wal-g#backup-list
+kubectl exec -it -n $SITEA_NS $SITEA_NAME-0 -- envdir /run/etc/wal-e.d/env wal-g backup-list
+
+name                          modified             wal_segment_backup_start
+base_000000010000000000000004 2022-10-17T14:09:07Z 000000010000000000000004
+base_000000010000000000000006 2022-10-17T14:10:03Z 000000010000000000000006
+base_000000010000000000000008 2022-10-17T14:20:03Z 000000010000000000000008
+
+## Create backup: https://github.com/zalando/postgres-operator/blob/master/docs/administrator.md#wal-archiving-and-physical-basebackups
+kubectl exec -it -n $SITEA_NS $SITEA_NAME-1 -- envdir "/run/etc/wal-e.d/env" /scripts/postgres_backup.sh "/home/postgres/pgdata/pgroot/data"
+
 
 ```
 
@@ -1323,15 +1346,18 @@ ansible [core 2.13.5]
 ```
 
 - Install plugins
-
-https://docs.ansible.com/ansible/latest/collections/kubernetes/core/k8s_module.html#requirements
+```sh
+## K8s: https://docs.ansible.com/ansible/latest/collections/kubernetes/core/k8s_module.html#requirements
 ansible-galaxy collection install kubernetes.core
-
+pip install kubernetes
+```
 
 - Write Ansible [Playbooks](https://www.digitalocean.com/community/tutorial_series/how-to-write-ansible-playbooks) and set up [inventory](https://www.digitalocean.com/community/tutorials/how-to-set-up-ansible-inventories) files
 
 ```sh
-cd /mnt/d/Project/github/vladimir22/pub-notes/ansible
+
+ANSIBLE_DIR=/mnt/d/Project/github/vladimir22/pub-notes/ansible
+cd $ANSIBLE_DIR
 
 cat <<EOF >inventory
 localhost
@@ -1367,7 +1393,7 @@ EOF
 ```
 
 
-- Run Ansible playbook
+- Run Playbook
 ```sh
 export ANSIBLE_STDOUT_CALLBACK=yaml
 ansible-playbook -i inventory ./playbooks/hello-world.yaml
